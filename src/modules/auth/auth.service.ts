@@ -1,26 +1,29 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+// import * as bcrypt from 'bcrypt';
+
+import { AuthDto } from './dtos/auth.dto';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
-  }
+  constructor(
+    @InjectRepository(User) private userRepository: Repository<User>,
+  ) {}
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+  async login({ login, password }: AuthDto) {
+    const userDB = await this.userRepository.findOneBy({ login });
+    if (!userDB) {
+      throw new BadRequestException('Usuario o Contraseña incorrectos');
+    }
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
-
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    // if (!bcrypt.compareSync(password, userDB.password)) {
+    //   throw new BadRequestException('Usuario o Contraseña incorrectos');
+    // }
+    // if (!userDB.isActive) {
+    //   throw new BadRequestException('El usuario ha sido deshabilitado');
+    // }
+    return true;
   }
 }

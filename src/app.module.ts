@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { EnvironmentVariables, validate } from './config';
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
 import { SystemsModule } from './modules/systems/systems.module';
+import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+
+import { EnvironmentVariables, validate } from './config';
+import KeyvRedis from '@keyv/redis';
 
 @Module({
   imports: [
@@ -25,6 +28,16 @@ import { SystemsModule } from './modules/systems/systems.module';
         autoLoadEntities: true,
         synchronize: true,
       }),
+      inject: [ConfigService],
+    }),
+    CacheModule.registerAsync({
+      useFactory: (configService: ConfigService<EnvironmentVariables>) => {
+        return {
+          stores: new KeyvRedis(
+            `redis://${configService.get('CACHE_STORE_HOST')}:${configService.get('CACHE_STORE_PORT')}`,
+          ),
+        };
+      },
       inject: [ConfigService],
     }),
     AuthModule,

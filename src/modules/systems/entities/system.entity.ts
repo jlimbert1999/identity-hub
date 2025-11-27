@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { UserAssignment } from './user-assignment.entity';
 
 @Entity()
 export class System {
@@ -8,24 +9,18 @@ export class System {
   @Column({ unique: true })
   code: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 150 })
   name: string;
 
   @Column({ nullable: true })
   description?: string;
 
-  @Column()
-  apiBaseUrl: string;
-
-  @Column({ nullable: true })
-  createUserEndpoint?: string;
-
-  @Column({ nullable: true })
-  unlinkUserEndpoint?: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  baseUrl: string | null;
 
   @Column()
   publicKey: string;
 
-  @Column({ default: true })
-  isActive: boolean;
+  @OneToMany(() => UserAssignment, (assignment) => assignment.system)
+  assignments: UserAssignment[];
 }

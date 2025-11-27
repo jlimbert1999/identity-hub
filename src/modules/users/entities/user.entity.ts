@@ -1,13 +1,15 @@
+import { UserAssignment } from 'src/modules/systems/entities';
 import {
   Column,
   Entity,
-  CreateDateColumn,
+  OneToMany,
   UpdateDateColumn,
+  CreateDateColumn,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
 @Entity()
-export class Users {
+export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -21,7 +23,7 @@ export class Users {
   fullName: string;
 
   @Column()
-  externalKey: string | null;
+  externalKey?: string;
 
   @Column({ unique: true, nullable: true })
   email: string;
@@ -35,6 +37,8 @@ export class Users {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => UserAssignment, (ua) => ua.user, { cascade: true })
+  @OneToMany(() => UserAssignment, (userAssigment) => userAssigment.user, {
+    cascade: true,
+  })
   assignments: UserAssignment[];
 }

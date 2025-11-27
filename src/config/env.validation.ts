@@ -19,6 +19,15 @@ export class EnvironmentVariables {
 
   @IsString()
   DATABASE_PASSWORD: StreamPipeOptions;
+
+  @IsString()
+  CACHE_STORE_HOST: string;
+
+  @IsNumber()
+  CACHE_STORE_PORT: number;
+
+  @IsString()
+  JWT_KEY: string;
 }
 
 export function validate(config: Record<string, unknown>) {
