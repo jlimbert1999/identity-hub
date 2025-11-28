@@ -22,7 +22,7 @@ export class User {
   @Column()
   fullName: string;
 
-  @Column()
+  @Column({ nullable: true })
   externalKey?: string;
 
   @Column({ unique: true, nullable: true })
