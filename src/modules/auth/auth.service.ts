@@ -61,6 +61,7 @@ export class AuthService {
 
   async exchangeCode(data: ExchangeCodeDto) {
     const { code, client_id } = data;
+    console.log(code, client_id);
 
     const payload = await this.consumeAuthCode(code, client_id);
     // payload = { userId, clientId }
@@ -83,7 +84,11 @@ export class AuthService {
 
     const payload = { userId, clientId };
 
-    await this.cacheManager.set(`authcode:${code}`, payload, 120 * 1000);
+    try {
+      await this.cacheManager.set(`authcode:${code}`, payload, 120 * 1000);
+    } catch (error) {
+      console.log(error);
+    }
 
     return code;
   }

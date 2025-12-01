@@ -34,9 +34,11 @@ import KeyvRedis from '@keyv/redis';
       isGlobal: true,
       useFactory: (configService: ConfigService<EnvironmentVariables>) => {
         return {
-          stores: new KeyvRedis(
-            `redis://${configService.get('CACHE_STORE_HOST')}:${configService.get('CACHE_STORE_PORT')}`,
-          ),
+          stores: [
+            new KeyvRedis(
+              `redis://${configService.get('CACHE_STORE_HOST')}:${configService.get('CACHE_STORE_PORT')}`,
+            ),
+          ],
         };
       },
       inject: [ConfigService],
