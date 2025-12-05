@@ -22,8 +22,11 @@ export class User {
   @Column()
   fullName: string;
 
+  @Column({ unique: true, nullable: true })
+  externalKey: string; // IDH-U-01JFF...
+
   @Column({ nullable: true })
-  externalKey?: string;
+  relationKey: string; // CI o número usado para RRHH
 
   @Column({ unique: true, nullable: true })
   email: string;

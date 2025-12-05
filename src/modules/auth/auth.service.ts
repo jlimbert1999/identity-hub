@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  ForbiddenException,
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,31 +13,22 @@ import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { User } from '../users/entities/user.entity';
+import { Client, UserAssignment } from '../systems/entities';
 import { AuthDto, ExchangeCodeDto } from './dtos/auth.dto';
+import { User } from '../users/entities/user.entity';
+import { DirectLoginDto } from './dtos';
+import { TokenPayload } from './interfaces';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
+    @InjectRepository(Client) private clientRepository: Repository<Client>,
+    @InjectRepository(UserAssignment)
+    private userAssignmentRepository: Repository<UserAssignment>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private jwtService: JwtService,
   ) {}
-
-  async login({ login }: AuthDto) {
-    const userDB = await this.userRepository.findOneBy({ login });
-    if (!userDB) {
-      throw new BadRequestException('Usuario o Contraseña incorrectos');
-    }
-
-    // if (!bcrypt.compareSync(password, userDB.password)) {
-    //   throw new BadRequestException('Usuario o Contraseña incorrectos');
-    // }
-    // if (!userDB.isActive) {
-    //   throw new BadRequestException('El usuario ha sido deshabilitado');
-    // }
-    return true;
-  }
 
   async validateUser({ login, password }: AuthDto): Promise<User> {
     const userDB = await this.userRepository.findOne({
@@ -139,5 +131,88 @@ export class AuthService {
         // email: user.email,
       },
     };
+  }
+
+  async refreshToken(refreshToken: string) {
+    try {
+      console.log('REFRESH DE TOEKN');
+      await this.jwtService.verifyAsync(refreshToken);
+
+      const payload: { sub: string; clientId: string } =
+        this.jwtService.decode(refreshToken);
+
+      const user = await this.userRepository.findOneBy({ id: payload.sub });
+      if (!user) throw new UnauthorizedException();
+
+      const newAccess = await this.jwtService.signAsync(
+        { sub: user.id, clientId: payload.clientId },
+        { expiresIn: '15m' },
+      );
+
+      const newRefresh = await this.jwtService.signAsync(
+        { sub: user.id, clientId: payload.clientId },
+        { expiresIn: '10h' }, // o 30 días o lo que quieras
+      );
+
+      return {
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+      };
+    } catch (error: unknown) {
+      console.log(error);
+      throw new UnauthorizedException();
+    }
+  }
+
+  async directLogin(loginDto: DirectLoginDto) {
+    const { login, password, clientKey } = loginDto;
+
+    const client = await this.clientRepository.findOneBy({ clientKey });
+    if (!client) throw new ForbiddenException(`${clientKey} is not valid.`);
+
+    const user = await this.userRepository.findOneBy({ login });
+    if (!user) {
+      throw new UnauthorizedException('Incorrect username or password.');
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Incorrect username or password.');
+    }
+
+    const assigned = await this.hasAssignment(user.id, client.id);
+    if (!assigned) {
+      throw new ForbiddenException('Usuario no habilitado para este sistema');
+    }
+
+    const { accessToken, refreshToken } = await this.generateAuthTokens({
+      sub: user.id,
+      externalKey: user.externalKey,
+      clientKey,
+    });
+
+    return { ok: true, accessToken, refreshToken };
+  }
+
+  async hasAssignment(userId: string, clientId: number) {
+    const assignment = await this.userAssignmentRepository.findOne({
+      where: { userId, clientId },
+    });
+    return !!assignment;
+  }
+
+  private async generateAuthTokens(payload: TokenPayload) {
+    const { sub, externalKey, clientKey } = payload;
+    const accessToken = await this.jwtService.signAsync(
+      { sub, externalKey, clientKey },
+      { expiresIn: '15m' },
+    );
+
+    const refreshToken = await this.jwtService.signAsync(
+      { sub, clientKey },
+      { expiresIn: '7d' },
+    );
+
+    return { accessToken, refreshToken };
   }
 }

@@ -1,13 +1,13 @@
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { UserAssignment } from './user-assignment.entity';
 
-@Entity()
-export class System {
+@Entity('clients')
+export class Client {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ unique: true })
-  code: string;
+  clientKey: string;
 
   @Column({ type: 'varchar', length: 150 })
   name: string;
@@ -21,6 +21,6 @@ export class System {
   @Column()
   publicKey: string;
 
-  @OneToMany(() => UserAssignment, (assignment) => assignment.system)
+  @OneToMany(() => UserAssignment, (assignment) => assignment.client)
   assignments: UserAssignment[];
 }

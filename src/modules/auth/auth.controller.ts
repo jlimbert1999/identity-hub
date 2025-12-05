@@ -1,21 +1,16 @@
-import { Post, Body, Controller, Query, Res } from '@nestjs/common';
+import { Post, Body, Controller, Res } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
-import {
-  AuthDto,
-  AuthorizeDto,
-  AuthorizeDtoGrouped,
-  ExchangeCodeDto,
-} from './dtos/auth.dto';
+import { AuthorizeDtoGrouped, DirectLoginDto, ExchangeCodeDto } from './dtos';
 import type { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post()
-  create(@Body() body: AuthDto) {
-    return this.authService.login(body);
+  @Post('direct-login')
+  directLogin(@Body() dto: DirectLoginDto) {
+    return this.authService.directLogin(dto);
   }
 
   @Post('authorize')
@@ -46,4 +41,9 @@ export class AuthController {
 
   // "ADMIN"
   // "$2b$10$OcWwBFQoU3z2JgpsEaVysejz54h.E..WAf26yuG2U.glVndbSpjd2"
+
+  @Post('refresh')
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    return this.authService.refreshToken(refreshToken);
+  }
 }

@@ -6,13 +6,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   PrimaryGeneratedColumn,
+  Column,
 } from 'typeorm';
 
 import { User } from 'src/modules/users/entities/user.entity';
-import { System } from './system.entity';
+import { Client } from './client.entity';
 
 @Entity('user_assignments')
-@Unique(['user', 'system'])
+@Unique(['user', 'client'])
 export class UserAssignment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,9 +22,15 @@ export class UserAssignment {
   @Index()
   user: User;
 
-  @ManyToOne(() => System, (system) => system.assignments, { eager: true })
+  @ManyToOne(() => Client, (system) => system.assignments, { eager: true })
   @Index()
-  system: System;
+  client: Client;
+
+  @Column({ nullable: true })
+  userId: string;
+
+  @Column({ nullable: true })
+  clientId: number;
 
   @CreateDateColumn()
   createdAt: Date;
