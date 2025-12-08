@@ -14,10 +14,10 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { Client, UserAssignment } from '../systems/entities';
-import { AuthDto, ExchangeCodeDto } from './dtos/auth.dto';
+import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
 import { User } from '../users/entities/user.entity';
 import { DirectLoginDto } from './dtos';
-import { TokenPayload } from './interfaces';
+import { RefreshTokenPayload, GenerateTokenProperties } from './interfaces';
 
 @Injectable()
 export class AuthService {
@@ -133,44 +133,13 @@ export class AuthService {
     };
   }
 
-  async refreshToken(refreshToken: string) {
-    try {
-      console.log('REFRESH DE TOEKN');
-      await this.jwtService.verifyAsync(refreshToken);
-
-      const payload: { sub: string; clientId: string } =
-        this.jwtService.decode(refreshToken);
-
-      const user = await this.userRepository.findOneBy({ id: payload.sub });
-      if (!user) throw new UnauthorizedException();
-
-      const newAccess = await this.jwtService.signAsync(
-        { sub: user.id, clientId: payload.clientId },
-        { expiresIn: '15m' },
-      );
-
-      const newRefresh = await this.jwtService.signAsync(
-        { sub: user.id, clientId: payload.clientId },
-        { expiresIn: '10h' }, // o 30 días o lo que quieras
-      );
-
-      return {
-        accessToken: newAccess,
-        refreshToken: newRefresh,
-      };
-    } catch (error: unknown) {
-      console.log(error);
-      throw new UnauthorizedException();
-    }
-  }
-
   async directLogin(loginDto: DirectLoginDto) {
     const { login, password, clientKey } = loginDto;
 
-    const client = await this.clientRepository.findOneBy({ clientKey });
-    if (!client) throw new ForbiddenException(`${clientKey} is not valid.`);
-
-    const user = await this.userRepository.findOneBy({ login });
+    const user = await this.userRepository.findOne({
+      where: { login },
+      relations: { assignments: true },
+    });
     if (!user) {
       throw new UnauthorizedException('Incorrect username or password.');
     }
@@ -180,10 +149,9 @@ export class AuthService {
       throw new UnauthorizedException('Incorrect username or password.');
     }
 
-    const assigned = await this.hasAssignment(user.id, client.id);
-    if (!assigned) {
-      throw new ForbiddenException('Usuario no habilitado para este sistema');
-    }
+    const isAssignment = await this.verifyAssigment(user, clientKey);
+
+    if (isAssignment) throw new UnauthorizedException();
 
     const { accessToken, refreshToken } = await this.generateAuthTokens({
       sub: user.id,
@@ -191,18 +159,55 @@ export class AuthService {
       clientKey,
     });
 
-    return { ok: true, accessToken, refreshToken };
+    return { accessToken, refreshToken };
   }
 
-  async hasAssignment(userId: string, clientId: number) {
-    const assignment = await this.userAssignmentRepository.findOne({
-      where: { userId, clientId },
-    });
-    return !!assignment;
+  async refreshToken(dto: RefreshTokenDto) {
+    try {
+      await this.jwtService.verifyAsync(dto.refreshToken);
+
+      const payload = this.jwtService.decode<RefreshTokenPayload>(
+        dto.refreshToken,
+      );
+
+      const user = await this.userRepository.findOne({
+        where: { id: payload.sub },
+        relations: { assignments: true },
+      });
+
+      if (!user) throw new UnauthorizedException();
+
+      const isAssignment = await this.verifyAssigment(user, payload.clientKey);
+
+      if (isAssignment) throw new UnauthorizedException();
+
+      const { accessToken, refreshToken } = await this.generateAuthTokens({
+        sub: user.id,
+        externalKey: user.externalKey,
+        clientKey: payload.clientKey,
+      });
+
+      return {
+        accessToken,
+        refreshToken,
+        externalKey: user.externalKey,
+      };
+    } catch (error: unknown) {
+      console.log(error);
+      throw new UnauthorizedException();
+    }
   }
 
-  private async generateAuthTokens(payload: TokenPayload) {
-    const { sub, externalKey, clientKey } = payload;
+  private async verifyAssigment(user: User, clientKey: string) {
+    const client = await this.clientRepository.findOneBy({ clientKey });
+
+    if (!client) throw new ForbiddenException(`${clientKey} is not valid.`);
+
+    return user.assignments.some((user) => user.clientId === client.id);
+  }
+
+  private async generateAuthTokens(properties: GenerateTokenProperties) {
+    const { sub, externalKey, clientKey } = properties;
     const accessToken = await this.jwtService.signAsync(
       { sub, externalKey, clientKey },
       { expiresIn: '15m' },

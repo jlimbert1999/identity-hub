@@ -1,7 +1,12 @@
 import { Post, Body, Controller, Res } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
-import { AuthorizeDtoGrouped, DirectLoginDto, ExchangeCodeDto } from './dtos';
+import {
+  AuthorizeDtoGrouped,
+  DirectLoginDto,
+  ExchangeCodeDto,
+  RefreshTokenDto,
+} from './dtos';
 import type { Response } from 'express';
 
 @Controller('auth')
@@ -39,11 +44,8 @@ export class AuthController {
     return this.authService.exchangeCode(body);
   }
 
-  // "ADMIN"
-  // "$2b$10$OcWwBFQoU3z2JgpsEaVysejz54h.E..WAf26yuG2U.glVndbSpjd2"
-
   @Post('refresh')
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    return this.authService.refreshToken(refreshToken);
+  refresh(@Body() body: RefreshTokenDto) {
+    return this.authService.refreshToken(body);
   }
 }

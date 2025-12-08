@@ -45,3 +45,9 @@ export class AuthorizeDtoGrouped {
   @IsString()
   state?: string;
 }
+
+export class RefreshTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  refreshToken: string;
+}
