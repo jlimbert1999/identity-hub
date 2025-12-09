@@ -9,7 +9,7 @@ import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
@@ -60,9 +60,11 @@ export class AuthService {
 
     // Recuperas el usuario
     // (podrías mover esto a AuthService si prefieres)
+    console.log(payload);
     const user = await this.userRepository.findOne({
       where: { id: payload.userId },
     });
+    console.log(user);
 
     if (!user) {
       throw new BadRequestException('Usuario no encontrado para este code');
@@ -71,10 +73,10 @@ export class AuthService {
     return this.issueTokens(user, payload.clientId);
   }
 
-  async generateAuthCode(userId: string, clientId: string) {
+  async generateAuthCode(clientId: string) {
     const code = randomBytes(32).toString('hex');
 
-    const payload = { userId, clientId };
+    const payload = { clientId };
 
     try {
       await this.cacheManager.set(`authcode:${code}`, payload, 120 * 1000);
@@ -119,7 +121,7 @@ export class AuthService {
         expiresIn: '30d',
       },
     );
-
+    console.log("generate");
     return {
       accessToken,
       refreshToken,
@@ -219,5 +221,57 @@ export class AuthService {
     );
 
     return { accessToken, refreshToken };
+  }
+
+  // 🔹 1. Validar que client_id existe y redirect_uri es válido
+  async validateClientRedirect(
+    clientId: string,
+    redirectUri: string,
+  ): Promise<boolean> {
+    const client = await this.clientRepository.findOne({
+      where: { clientKey: clientId },
+    });
+
+    if (!client) return false;
+
+    // El redirect debe coincidir EXACTAMENTE
+    // if (client.re !== redirectUri) return false;
+
+    return true;
+  }
+
+  // 1️⃣ Crear sesión (session_id -> userId)
+  async createSession(userId: string) {
+    const sessionId = randomUUID();
+
+    await this.cacheManager.set(`session:${sessionId}`, userId, 60 * 60 * 24);
+
+    return sessionId;
+  }
+
+  // 2️⃣ Obtener userId desde una sesión
+  async getUserFromSession(sessionId: string) {
+    return await this.cacheManager.get<string>(`session:${sessionId}`);
+  }
+
+  // 3️⃣ Crear authorization code (code -> payload)
+  async generateAuthorizationCode(payload: any) {
+    const code = randomUUID();
+
+    await this.cacheManager.set(`authcode:${code}`, payload, 60 * 5);
+
+    return code;
+  }
+
+  // 4️⃣ Consumir authorization code (solo una vez)
+  async consumeAuthorizationCode(code: string) {
+    const key = `authcode:${code}`;
+    const data = await this.cacheManager.get<any>(key);
+
+    if (data) {
+      await this.cacheManager.del(key); // delete: One-time use
+    }
+
+    return data;
   }
 }

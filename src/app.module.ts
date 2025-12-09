@@ -9,6 +9,8 @@ import { AuthModule } from './modules/auth/auth.module';
 
 import { EnvironmentVariables, validate } from './config';
 import KeyvRedis from '@keyv/redis';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
@@ -42,6 +44,11 @@ import KeyvRedis from '@keyv/redis';
         };
       },
       inject: [ConfigService],
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      exclude: ['/login', '/oauth/*', '/auth/*'],
+      // renderPath: '/',
     }),
     AuthModule,
     UsersModule,
