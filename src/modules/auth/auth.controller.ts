@@ -30,7 +30,7 @@ export class AuthController {
     res.cookie('sso_session', '1234', {
       httpOnly: true,
       secure: false, // true en producción
-      sameSite: 'lax',
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       // domain: 'http://localhost:8000', // el dominio real
     });
@@ -71,13 +71,14 @@ export class AuthController {
     if (!allowed) {
       return res.status(400).send('Invalid redirect_uri or client_id');
     }
-
     // 2️⃣ Verificar si hay sesión SSO
     const sessionId = req.cookies['session_id'];
+    console.log(sessionId);
 
     if (!sessionId) {
-      const loginUrl = `/login?redirect=${encodeURIComponent(req.originalUrl)}`;
-      return res.redirect(loginUrl);
+      // const loginUrl = `/login?redirect=${encodeURIComponent(req.originalUrl)}`;
+      console.log('REDIRIGIR A FRONT INDEIT');
+      return res.redirect('http://localhost:4201/login');
     }
 
     // 3️⃣ Buscar usuario autenticado
@@ -94,7 +95,7 @@ export class AuthController {
       redirectUri: redirect_uri,
       scope,
     });
-    
+    console.log(code);
     // 5️⃣ Redirigir al SP callback con el code
     const redirect = new URL(redirect_uri);
     redirect.searchParams.set('code', code);
@@ -135,6 +136,6 @@ export class AuthController {
       maxAge: 24 * 60 * 60 * 1000, // 1 día
     });
     // Redirect no lo decide Angular, lo decide backend
-    return response.redirect(redirectUrl || '/');
+    return response.redirect(redirectUrl);
   }
 }

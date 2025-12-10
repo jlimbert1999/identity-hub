@@ -47,7 +47,7 @@ import { join } from 'path';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
-      exclude: ['/login', '/oauth/*', '/auth/*'],
+      // exclude: ['/login', '/oauth/*', '/auth/*'],
       // renderPath: '/',
     }),
     AuthModule,
