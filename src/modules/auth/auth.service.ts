@@ -112,16 +112,16 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payloadBase, {
-      expiresIn: '15m',
+      expiresIn: '1m',
     });
 
     const refreshToken = await this.jwtService.signAsync(
       { ...payloadBase, type: 'refresh' },
       {
-        expiresIn: '30d',
+        expiresIn: '1d',
       },
     );
-    console.log("generate");
+    console.log('generate');
     return {
       accessToken,
       refreshToken,
@@ -133,35 +133,6 @@ export class AuthService {
         // email: user.email,
       },
     };
-  }
-
-  async directLogin(loginDto: DirectLoginDto) {
-    const { login, password, clientKey } = loginDto;
-
-    const user = await this.userRepository.findOne({
-      where: { login },
-      relations: { assignments: true },
-    });
-    if (!user) {
-      throw new UnauthorizedException('Incorrect username or password.');
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      throw new UnauthorizedException('Incorrect username or password.');
-    }
-
-    const isAssignment = await this.verifyAssigment(user, clientKey);
-
-    if (isAssignment) throw new UnauthorizedException();
-
-    const { accessToken, refreshToken } = await this.generateAuthTokens({
-      sub: user.id,
-      externalKey: user.externalKey,
-      clientKey,
-    });
-
-    return { accessToken, refreshToken };
   }
 
   async refreshToken(dto: RefreshTokenDto) {
@@ -212,12 +183,12 @@ export class AuthService {
     const { sub, externalKey, clientKey } = properties;
     const accessToken = await this.jwtService.signAsync(
       { sub, externalKey, clientKey },
-      { expiresIn: '15m' },
+      { expiresIn: '1m' },
     );
 
     const refreshToken = await this.jwtService.signAsync(
       { sub, clientKey },
-      { expiresIn: '7d' },
+      { expiresIn: '1d' },
     );
 
     return { accessToken, refreshToken };
@@ -240,38 +211,89 @@ export class AuthService {
     return true;
   }
 
-  // 1️⃣ Crear sesión (session_id -> userId)
-  async createSession(userId: string) {
-    const sessionId = randomUUID();
-
-    await this.cacheManager.set(`session:${sessionId}`, userId, 60 * 60 * 24);
-
-    return sessionId;
-  }
-
   // 2️⃣ Obtener userId desde una sesión
   async getUserFromSession(sessionId: string) {
     return await this.cacheManager.get<string>(`session:${sessionId}`);
   }
 
-  // 3️⃣ Crear authorization code (code -> payload)
-  async generateAuthorizationCode(payload: any) {
-    const code = randomUUID();
+  async savePendingOAuthRequest(data: {
+    client_id: string;
+    redirect_uri: string;
+    state?: string;
+  }) {
+    // 5 minutos de vigencia
+    await this.cacheManager.set('pendingOAuth', data, 300_000);
+  }
 
-    await this.cacheManager.set(`authcode:${code}`, payload, 60 * 5);
+  async getPendingOAuthRequest(): Promise<
+    | {
+        client_id: string;
+        redirect_uri: string;
+        state?: string;
+      }
+    | null
+    | undefined
+  > {
+    return await this.cacheManager.get('pendingOAuth');
+  }
+
+  async createSession(userId: string): Promise<string> {
+    const sessionId = crypto.randomUUID();
+
+    await this.cacheManager.set(`session:${sessionId}`, userId, 24 * 60 * 60);
+
+    return sessionId;
+  }
+
+  async getSessionUser(sessionId: string): Promise<string | null | undefined> {
+    return await this.cacheManager.get(`session:${sessionId}`);
+  }
+
+  async generateAuthorizationCode(data: {
+    userId: string;
+    clientId: string;
+    redirectUri: string;
+  }) {
+    const code = crypto.randomUUID();
+
+    await this.cacheManager.set(`authcode:${code}`, data, 300);
 
     return code;
   }
 
-  // 4️⃣ Consumir authorization code (solo una vez)
-  async consumeAuthorizationCode(code: string) {
+  async consumeAuthorizationCode(code: string): Promise<{
+    userId: string;
+    clientId: string;
+    redirectUri: string;
+  } | null> {
     const key = `authcode:${code}`;
-    const data = await this.cacheManager.get<any>(key);
+    const data = await this.cacheManager.get(key);
 
-    if (data) {
-      await this.cacheManager.del(key); // delete: One-time use
-    }
+    if (!data) return null;
 
-    return data;
+    // Evita reuso
+    await this.cacheManager.del(key);
+    return data as any;
+  }
+
+  async generateTokens(payload: { userId: string; clientId: string }) {
+    const access_token = await this.jwtService.signAsync(
+      {
+        sub: payload.userId,
+        client: payload.clientId,
+      },
+      { expiresIn: '1m' },
+    );
+
+    const refresh_token = await this.jwtService.signAsync(
+      {
+        sub: payload.userId,
+        client: payload.clientId,
+        type: 'refresh',
+      },
+      { expiresIn: '1d' },
+    );
+
+    return { access_token, refresh_token };
   }
 }
