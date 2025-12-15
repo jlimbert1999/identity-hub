@@ -136,42 +136,31 @@ export class AuthService {
   }
 
   async refreshToken(dto: RefreshTokenDto) {
-    try {
-      await this.jwtService.verifyAsync(dto.refreshToken);
+    const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
+      dto.refreshToken,
+    );
 
-      const payload = this.jwtService.decode<RefreshTokenPayload>(
-        dto.refreshToken,
-      );
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+      relations: { assignments: true },
+    });
 
-      const user = await this.userRepository.findOne({
-        where: { id: payload.sub },
-        relations: { assignments: true },
-      });
+    if (!user) throw new UnauthorizedException();
 
-      if (!user) throw new UnauthorizedException();
+    const hasAssignment = await this.userHasClientAssignment(
+      user,
+      payload.clientKey,
+    );
+    if (!hasAssignment) throw new UnauthorizedException();
 
-      const isAssignment = await this.verifyAssigment(user, payload.clientKey);
-
-      if (isAssignment) throw new UnauthorizedException();
-
-      const { accessToken, refreshToken } = await this.generateAuthTokens({
-        sub: user.id,
-        externalKey: user.externalKey,
-        clientKey: payload.clientKey,
-      });
-
-      return {
-        accessToken,
-        refreshToken,
-        externalKey: user.externalKey,
-      };
-    } catch (error: unknown) {
-      console.log(error);
-      throw new UnauthorizedException();
-    }
+    return this.generateAuthTokens({
+      sub: user.id,
+      externalKey: user.externalKey,
+      clientKey: payload.clientKey,
+    });
   }
 
-  private async verifyAssigment(user: User, clientKey: string) {
+  private async userHasClientAssignment(user: User, clientKey: string) {
     const client = await this.clientRepository.findOneBy({ clientKey });
 
     if (!client) throw new ForbiddenException(`${clientKey} is not valid.`);

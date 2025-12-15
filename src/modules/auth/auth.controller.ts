@@ -71,11 +71,6 @@ export class AuthController {
     return res.redirect(url.toString());
   }
 
-  @Post('refresh')
-  refresh(@Body() body: RefreshTokenDto) {
-    return this.authService.refreshToken(body);
-  }
-
   @Post('login')
   async login(@Body() body: AuthDto, @Res() response: Response) {
     // Validar credenciales
@@ -145,5 +140,10 @@ export class AuthController {
     });
 
     return tokens;
+  }
+
+  @Post('refresh')
+  refresh(@Body() body: RefreshTokenDto) {
+    return this.authService.refreshToken(body);
   }
 }
