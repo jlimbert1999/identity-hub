@@ -18,11 +18,13 @@ export class UserAssignment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, (user) => user.assignments, { eager: true })
+  @ManyToOne(() => User, (user) => user.assignments, { onDelete: 'CASCADE' })
   @Index()
   user: User;
 
-  @ManyToOne(() => Client, (system) => system.assignments, { eager: true })
+  @ManyToOne(() => Client, (system) => system.assignments, {
+    onDelete: 'CASCADE',
+  })
   @Index()
   client: Client;
 

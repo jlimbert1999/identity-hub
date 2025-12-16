@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { SystemsModule } from './modules/systems/systems.module';
+import KeyvRedis from '@keyv/redis';
+
+import { SystemsModule } from './modules/client/client.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 
 import { EnvironmentVariables, validate } from './config';
-import KeyvRedis from '@keyv/redis';
-import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
 @Module({

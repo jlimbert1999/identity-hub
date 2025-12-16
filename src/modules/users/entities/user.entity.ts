@@ -1,4 +1,4 @@
-import { UserAssignment } from 'src/modules/systems/entities';
+import { UserAssignment } from 'src/modules/client/entities';
 import {
   Column,
   Entity,
@@ -7,6 +7,11 @@ import {
   CreateDateColumn,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
+export enum UserRole {
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+}
 
 @Entity()
 export class User {
@@ -22,7 +27,7 @@ export class User {
   @Column()
   fullName: string;
 
-  @Column({ unique: true, nullable: true })
+  @Column({ unique: true })
   externalKey: string; // IDH-U-01JFF...
 
   @Column({ nullable: true })
@@ -34,14 +39,20 @@ export class User {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    array: true,
+    default: [UserRole.USER],
+  })
+  roles: UserRole[];
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => UserAssignment, (userAssigment) => userAssigment.user, {
-    cascade: true,
-  })
+  @OneToMany(() => UserAssignment, (userAssigment) => userAssigment.user)
   assignments: UserAssignment[];
 }

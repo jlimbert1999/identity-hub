@@ -13,7 +13,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { Client, UserAssignment } from '../systems/entities';
+import { Client, UserAssignment } from '../client/entities';
 import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
 import { User } from '../users/entities/user.entity';
 import { DirectLoginDto } from './dtos';

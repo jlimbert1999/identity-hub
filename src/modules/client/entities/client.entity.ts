@@ -1,4 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  OneToMany,
+  CreateDateColumn,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { UserAssignment } from './user-assignment.entity';
 
 @Entity('clients')
@@ -9,18 +15,24 @@ export class Client {
   @Column({ unique: true })
   clientKey: string;
 
-  @Column({ type: 'varchar', length: 150 })
+  @Column({ length: 150 })
   name: string;
 
   @Column({ nullable: true })
   description?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ length: 255, nullable: true })
   baseUrl: string | null;
 
   @Column()
-  publicKey: string;
+  defaultRole: string;
+
+  @Column({ default: true })
+  isActive: boolean;
 
   @OneToMany(() => UserAssignment, (assignment) => assignment.client)
   assignments: UserAssignment[];
+
+  @CreateDateColumn()
+  createdAt: Date;
 }
