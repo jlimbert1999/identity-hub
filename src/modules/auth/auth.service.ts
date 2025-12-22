@@ -9,23 +9,20 @@ import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { Client, UserAssignment } from '../client/entities';
 import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
 import { User } from '../users/entities/user.entity';
-import { DirectLoginDto } from './dtos';
 import { RefreshTokenPayload, GenerateTokenProperties } from './interfaces';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
-    @InjectRepository(Client) private clientRepository: Repository<Client>,
-    @InjectRepository(UserAssignment)
-    private userAssignmentRepository: Repository<UserAssignment>,
+    // @InjectRepository(Client) private clientRepository: Repository<Client>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private jwtService: JwtService,
   ) {}
@@ -34,7 +31,7 @@ export class AuthService {
     const userDB = await this.userRepository.findOne({
       where: { login },
     });
-
+    console.log(userDB);
     if (!userDB) {
       throw new BadRequestException('Usuario o contraseña incorrectos');
     }
@@ -160,12 +157,31 @@ export class AuthService {
     });
   }
 
+  async refreshApiTokens(refreshToken: string) {
+    let payload: any;
+
+    try {
+      payload = await this.jwtService.verifyAsync(refreshToken);
+    } catch {
+      throw new UnauthorizedException();
+    }
+
+    // Solo identidad
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+      relations: { roles: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException();
+    }
+
+    return this.generateApiTokens(user);
+  }
+
   private async userHasClientAssignment(user: User, clientKey: string) {
-    const client = await this.clientRepository.findOneBy({ clientKey });
-
-    if (!client) throw new ForbiddenException(`${clientKey} is not valid.`);
-
-    return user.assignments.some((user) => user.clientId === client.id);
+    return true;
+    // return user.assignments.some((user) => user === client.id);
   }
 
   private async generateAuthTokens(properties: GenerateTokenProperties) {
@@ -183,16 +199,37 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  async generateApiTokens(user: User) {
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        externalKey: user.externalKey,
+        type: 'identity', // opcional pero recomendable
+      },
+      { expiresIn: '15m' },
+    );
+
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        type: 'identity',
+      },
+      { expiresIn: '7d' },
+    );
+
+    return { accessToken, refreshToken };
+  }
+
   // 🔹 1. Validar que client_id existe y redirect_uri es válido
   async validateClientRedirect(
     clientId: string,
     redirectUri: string,
   ): Promise<boolean> {
-    const client = await this.clientRepository.findOne({
-      where: { clientKey: clientId },
-    });
+    // const client = await this.clientRepository.findOne({
+    //   where: { clientKey: clientId },
+    // });
 
-    if (!client) return false;
+    // if (!client) return false;
 
     // El redirect debe coincidir EXACTAMENTE
     // if (client.re !== redirectUri) return false;

@@ -6,11 +6,14 @@ import {
   Get,
   Query,
   UnauthorizedException,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
-import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos';
+import { AuthDto, RefreshTokenDto } from './dtos';
 import type { Request, Response } from 'express';
+import { AuthGuard } from './guards/auth/auth.guard';
 
 interface AuthorizeParams {
   client_id: string;
@@ -145,5 +148,14 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refreshToken(body);
+  }
+
+  @Get('status')
+  @UseGuards(AuthGuard)
+  checkAuthStatus(@Req() req: Request) {
+    return {
+      ok: true,
+      user: req['user'],
+    };
   }
 }

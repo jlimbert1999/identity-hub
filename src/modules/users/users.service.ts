@@ -78,6 +78,13 @@ export class UsersService {
     return updatedUser;
   }
 
+  async findByExternalKey(id: string) {
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
+  }
+
   private async checkDuplicateLogin(login: string) {
     const exists = await this.userRepository.findOne({ where: { login } });
     if (exists) {

@@ -22,7 +22,7 @@ export class Client {
   description?: string;
 
   @Column({ length: 255, nullable: true })
-  baseUrl: string | null;
+  baseUrl?: string;
 
   @Column()
   defaultRole: string;

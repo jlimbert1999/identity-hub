@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17 # Using a specific version is recommended
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: identity-hub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Mount a named volume for data persistence
+    ports:
+      - "5432:5432" # Map port 5432 on the host to port 5432 in the container
+
+volumes:
+  postgres_data: # Define the named volume
