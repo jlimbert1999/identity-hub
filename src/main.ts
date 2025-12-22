@@ -14,7 +14,7 @@ async function bootstrap() {
   );
   app.enableCors({
     // Permitir acceso desde el frontend de Angular (4200)
-    origin: 'http://localhost:4200',
+    origin: 'http://localhost:4300',
 
     // VITAL: Si el frontend usa withCredentials, este backend DEBE responder con 'true'
     credentials: true,

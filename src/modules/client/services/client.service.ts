@@ -8,12 +8,12 @@ import { ILike, Repository } from 'typeorm';
 
 import { PaginationParamsDto } from 'src/modules/common';
 import { CreateClientDto, UpdateClientDto } from '../dtos';
-import { Client } from '../entities';
+import { Application } from '../entities';
 
 @Injectable()
 export class ClientService {
   constructor(
-    @InjectRepository(Client) private clientRepository: Repository<Client>,
+    @InjectRepository(Application) private clientRepository: Repository<Application>,
   ) {}
 
   async create(clientDto: CreateClientDto) {
@@ -39,7 +39,7 @@ export class ClientService {
 
   async findAll(paginationDto: PaginationParamsDto) {
     const { limit, offset, term } = paginationDto;
-    const [clients, length] = await this.clientRepository.findAndCount({
+    const [clients, total] = await this.clientRepository.findAndCount({
       take: limit,
       skip: offset,
       ...(term && {
@@ -49,7 +49,7 @@ export class ClientService {
         createdAt: 'DESC',
       },
     });
-    return { clients, length };
+    return { clients, total };
   }
   u;
 }

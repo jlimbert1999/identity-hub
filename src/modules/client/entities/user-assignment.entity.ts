@@ -10,23 +10,23 @@ import {
 } from 'typeorm';
 
 import { User } from 'src/modules/users/entities/user.entity';
-import { Client } from './client.entity';
+import { Application } from './application.entity';
 
-@Entity('user_assignments')
+@Entity('user_applications')
 @Unique(['user', 'client'])
-export class UserAssignment {
+export class UserApplications {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, (user) => user.assignments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.applications, { onDelete: 'CASCADE' })
   @Index()
   user: User;
 
-  @ManyToOne(() => Client, (system) => system.assignments, {
+  @ManyToOne(() => Application, (system) => system.applications, {
     onDelete: 'CASCADE',
   })
   @Index()
-  client: Client;
+  client: Application;
 
   @Column({ nullable: true })
   userId: string;

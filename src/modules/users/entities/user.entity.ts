@@ -1,4 +1,4 @@
-import { UserAssignment } from 'src/modules/client/entities';
+import { UserApplications } from 'src/modules/client/entities';
 import {
   Column,
   Entity,
@@ -27,7 +27,7 @@ export class User {
   @Column()
   fullName: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   externalKey: string; // IDH-U-01JFF...
 
   @Column({ nullable: true })
@@ -53,6 +53,6 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => UserAssignment, (userAssigment) => userAssigment.user)
-  assignments: UserAssignment[];
+  @OneToMany(() => UserApplications, (userAssigment) => userAssigment.user)
+  applications: UserApplications[];
 }

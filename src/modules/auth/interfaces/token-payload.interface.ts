@@ -7,3 +7,7 @@ export class RefreshTokenPayload {
   sub: string;
   clientKey: string;
 }
+
+export class AuthAccessTokenPayload {
+  sub: string;
+}

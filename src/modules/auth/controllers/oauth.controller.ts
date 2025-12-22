@@ -23,54 +23,21 @@ export class OauthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const user = await this.authService.validateUser(body);
-    if (!user) {
-      return response.status(401).send('Invalid credentials');
-    }
-    const { accessToken, refreshToken } =
-      await this.authService.generateApiTokens(user);
+    const result = await this.authService.generateApiTokens(user);
 
-    response.cookie('identity_access', accessToken, {
+    response.cookie('identity_access', result.accessToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
     });
 
-    response.cookie('identity_refresh', refreshToken, {
+    response.cookie('identity_refresh', result.refreshToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
     });
 
-    return { ok: true };
-  }
-
-  // 🔄 REFRESH
-  @Post('refresh')
-  async refresh(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const refreshToken = req.cookies?.['identity_refresh'];
-    if (!refreshToken) {
-      throw new UnauthorizedException();
-    }
-
-    const { accessToken, refreshToken: newRefresh } =
-      await this.authService.refreshApiTokens(refreshToken);
-
-    res.cookie('identity_access', accessToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-    });
-
-    res.cookie('identity_refresh', newRefresh, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-    });
-
-    return { ok: true };
+    return { ok: true, message: 'Login successful' };
   }
 
   // ✅ STATUS
@@ -78,7 +45,6 @@ export class OauthController {
   @UseGuards(AuthGuard)
   status(@Req() req: Request) {
     return {
-      ok: true,
       user: req['user'],
     };
   }
@@ -89,5 +55,33 @@ export class OauthController {
     res.clearCookie('identity_access');
     res.clearCookie('identity_refresh');
     return { ok: true };
+  }
+
+  @Post('refresh')
+  async refreshInternal(@Req() req: Request, @Res() res: Response) {
+    console.log('Refreshing internal token');
+    const refreshToken = req.cookies['identity_refresh'] as string | undefined;
+    console.log(refreshToken);
+    if (!refreshToken) {
+      throw new UnauthorizedException();
+    }
+
+    const tokens = await this.authService.refreshInternalToken(refreshToken);
+
+    res.cookie('identity_access', tokens.accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie('identity_refresh', tokens.refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({ ok: true });
   }
 }

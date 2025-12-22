@@ -21,7 +21,7 @@ export class UsersService {
 
   async findAll(paginationDto: PaginationParamsDto) {
     const { limit, offset, term } = paginationDto;
-    const [users, length] = await this.userRepository.findAndCount({
+    const [users, total] = await this.userRepository.findAndCount({
       take: limit,
       skip: offset,
       select: { password: false },
@@ -32,7 +32,7 @@ export class UsersService {
         createdAt: 'DESC',
       },
     });
-    return { users, length };
+    return { users, total };
   }
 
   async create(userDto: CreateUserDto) {
@@ -80,8 +80,7 @@ export class UsersService {
 
   async findByExternalKey(id: string) {
     return this.userRepository.findOne({
-      where: { id },
-      relations: ['roles'],
+      where: { externalKey: id },
     });
   }
 

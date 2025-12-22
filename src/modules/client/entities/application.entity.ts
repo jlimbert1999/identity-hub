@@ -5,10 +5,10 @@ import {
   CreateDateColumn,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { UserAssignment } from './user-assignment.entity';
+import { UserApplications } from './user-assignment.entity';
 
-@Entity('clients')
-export class Client {
+@Entity('applications')
+export class Application {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,14 +24,14 @@ export class Client {
   @Column({ length: 255, nullable: true })
   baseUrl?: string;
 
-  @Column()
+  @Column({ nullable: true })
   defaultRole: string;
 
   @Column({ default: true })
   isActive: boolean;
 
-  @OneToMany(() => UserAssignment, (assignment) => assignment.client)
-  assignments: UserAssignment[];
+  @OneToMany(() => UserApplications, (assignment) => assignment.client)
+  applications: UserApplications[];
 
   @CreateDateColumn()
   createdAt: Date;

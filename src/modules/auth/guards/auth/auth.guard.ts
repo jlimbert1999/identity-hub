@@ -16,16 +16,15 @@ export class AuthGuard implements CanActivate {
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const token = request.cookies?.['identity_access'];
+    const token = request.cookies['identity_access'] as string | undefined;
 
-    if (!token) {
-      throw new UnauthorizedException();
-    }
+    if (!token) throw new UnauthorizedException('No token provided');
 
     let payload: any;
     try {
       payload = await this.jwtService.verifyAsync(token);
     } catch {
+      console.log('error valdacion toekn');
       throw new UnauthorizedException();
     }
 

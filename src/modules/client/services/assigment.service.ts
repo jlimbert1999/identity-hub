@@ -7,16 +7,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
 import { User } from 'src/modules/users/entities';
-import { Client, UserAssignment } from '../entities';
+import { Application, UserApplications } from '../entities';
 import { CreateAssigmentDto } from '../dtos';
 
 @Injectable()
 export class AssigmentService {
   constructor(
-    @InjectRepository(Client) private clientRepository: Repository<Client>,
+    @InjectRepository(Application)
+    private clientRepository: Repository<Application>,
     @InjectRepository(User) private userRepository: Repository<User>,
-    @InjectRepository(UserAssignment)
-    private assigmentRespository: Repository<UserAssignment>,
+    @InjectRepository(UserApplications)
+    private assigmentRespository: Repository<UserApplications>,
   ) {}
 
   async assignUser(assigmentDto: CreateAssigmentDto) {

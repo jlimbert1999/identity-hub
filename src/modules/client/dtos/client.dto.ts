@@ -17,6 +17,10 @@ export class CreateClientDto {
   @IsString()
   @IsNotEmpty()
   baseUrl: string;
+
+  @IsString()
+  @IsNotEmpty()
+  defaultRole: string;
 }
 
 export class UpdateClientDto extends PartialType(CreateClientDto) {}

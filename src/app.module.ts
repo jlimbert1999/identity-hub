@@ -6,7 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import KeyvRedis from '@keyv/redis';
 
-import { ClientModule } from './modules/client/client.module';
+import { AccessModule } from './modules/client/access.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 
@@ -53,7 +53,7 @@ import { join } from 'path';
     }),
     AuthModule,
     UsersModule,
-    ClientModule,
+    AccessModule,
   ],
   controllers: [],
   providers: [],

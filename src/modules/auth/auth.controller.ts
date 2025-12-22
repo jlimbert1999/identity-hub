@@ -153,6 +153,7 @@ export class AuthController {
   @Get('status')
   @UseGuards(AuthGuard)
   checkAuthStatus(@Req() req: Request) {
+    console.log(req["user"]);
     return {
       ok: true,
       user: req['user'],

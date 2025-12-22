@@ -13,10 +13,14 @@ import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { Client, UserAssignment } from '../client/entities';
+import { Application, UserApplications } from '../client/entities';
 import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
 import { User } from '../users/entities/user.entity';
-import { RefreshTokenPayload, GenerateTokenProperties } from './interfaces';
+import {
+  RefreshTokenPayload,
+  GenerateTokenProperties,
+  AuthAccessTokenPayload,
+} from './interfaces';
 
 @Injectable()
 export class AuthService {
@@ -31,7 +35,6 @@ export class AuthService {
     const userDB = await this.userRepository.findOne({
       where: { login },
     });
-    console.log(userDB);
     if (!userDB) {
       throw new BadRequestException('Usuario o contraseña incorrectos');
     }
@@ -139,7 +142,7 @@ export class AuthService {
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      relations: { assignments: true },
+      relations: { applications: true },
     });
 
     if (!user) throw new UnauthorizedException();
@@ -157,26 +160,25 @@ export class AuthService {
     });
   }
 
-  async refreshApiTokens(refreshToken: string) {
-    let payload: any;
+  async refreshInternalToken(refreshToken: string) {
+    const payload =
+      await this.jwtService.verifyAsync<RefreshTokenPayload>(refreshToken);
 
-    try {
-      payload = await this.jwtService.verifyAsync(refreshToken);
-    } catch {
-      throw new UnauthorizedException();
-    }
+    // if (payload.clientKey !== 'identity-hub-admin') {
+    //   throw new UnauthorizedException();
+    // }
 
-    // Solo identidad
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      relations: { roles: true },
     });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException();
-    }
+    if (!user) throw new UnauthorizedException();
 
-    return this.generateApiTokens(user);
+    return this.generateAuthTokens({
+      sub: user.id,
+      externalKey: user.externalKey,
+      clientKey: 'identity-hub-admin',
+    });
   }
 
   private async userHasClientAssignment(user: User, clientKey: string) {
@@ -200,14 +202,10 @@ export class AuthService {
   }
 
   async generateApiTokens(user: User) {
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: user.id,
-        externalKey: user.externalKey,
-        type: 'identity', // opcional pero recomendable
-      },
-      { expiresIn: '15m' },
-    );
+    const payload: AuthAccessTokenPayload = { sub: user.id };
+    const accessToken = await this.jwtService.signAsync(payload, {
+      expiresIn: '15m',
+    });
 
     const refreshToken = await this.jwtService.signAsync(
       {
