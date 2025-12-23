@@ -1,13 +1,13 @@
 import {
   Injectable,
-  BadRequestException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
 import { User } from 'src/modules/users/entities';
-import { Application, UserApplications } from '../entities';
+import { Application, UserApplication } from '../entities';
 import { CreateAssigmentDto } from '../dtos';
 
 @Injectable()
@@ -16,38 +16,42 @@ export class AssigmentService {
     @InjectRepository(Application)
     private clientRepository: Repository<Application>,
     @InjectRepository(User) private userRepository: Repository<User>,
-    @InjectRepository(UserApplications)
-    private assigmentRespository: Repository<UserApplications>,
+    @InjectRepository(UserApplication)
+    private assigmentRespository: Repository<UserApplication>,
   ) {}
 
   async assignUser(assigmentDto: CreateAssigmentDto) {
-    const { userId, clientIds } = assigmentDto;
+    const { userId, applicationIds } = assigmentDto;
     const user = await this.userRepository.findOneBy({ id: userId });
 
     if (!user) throw new NotFoundException('User not fount');
 
-    const clients = await this.clientRepository.find({
-      where: { id: In(clientIds) },
+    const applications = await this.clientRepository.find({
+      where: { id: In(applicationIds) },
     });
 
-    if (clients.length !== clientIds.length) {
-      const missingIds = clientIds.filter(
-        (clientId) => !clients.some(({ id }) => id === clientId),
+    if (applications.length !== applicationIds.length) {
+      const missingIds = applicationIds.filter(
+        (clientId) => !applications.some(({ id }) => id === clientId),
       );
       throw new BadRequestException(
         `Missing clients: ${missingIds.join(', ')}`,
       );
     }
 
-    const assignments = clients.map((client) =>
+    const assignments = applications.map((application) =>
       this.assigmentRespository.create({
         user,
-        client,
+        application,
       }),
     );
 
-    await this.assigmentRespository.save(assignments);
-
-    return assignments;
+    try {
+      await this.assigmentRespository.save(assignments);
+      return assignments;
+    } catch (error: unknown) {
+      console.log(error);
+      throw new BadRequestException('Error creating assignments');
+    }
   }
 }

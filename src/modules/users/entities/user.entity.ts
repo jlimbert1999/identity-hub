@@ -1,4 +1,4 @@
-import { UserApplications } from 'src/modules/client/entities';
+import { UserApplication } from 'src/modules/access/entities';
 import {
   Column,
   Entity,
@@ -53,6 +53,6 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => UserApplications, (userAssigment) => userAssigment.user)
-  applications: UserApplications[];
+  @OneToMany(() => UserApplication, (UserApplications) => UserApplications.user)
+  applications: UserApplication[];
 }

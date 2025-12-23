@@ -13,8 +13,8 @@ import { User } from 'src/modules/users/entities/user.entity';
 import { Application } from './application.entity';
 
 @Entity('user_applications')
-@Unique(['user', 'client'])
-export class UserApplications {
+@Unique(['user', 'application'])
+export class UserApplication {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -26,13 +26,13 @@ export class UserApplications {
     onDelete: 'CASCADE',
   })
   @Index()
-  client: Application;
+  application: Application;
 
   @Column({ nullable: true })
   userId: string;
 
   @Column({ nullable: true })
-  clientId: number;
+  applicationId: number;
 
   @CreateDateColumn()
   createdAt: Date;

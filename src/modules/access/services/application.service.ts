@@ -11,9 +11,10 @@ import { CreateClientDto, UpdateClientDto } from '../dtos';
 import { Application } from '../entities';
 
 @Injectable()
-export class ClientService {
+export class ApplicationService {
   constructor(
-    @InjectRepository(Application) private clientRepository: Repository<Application>,
+    @InjectRepository(Application)
+    private clientRepository: Repository<Application>,
   ) {}
 
   async create(clientDto: CreateClientDto) {
@@ -51,5 +52,12 @@ export class ClientService {
     });
     return { clients, total };
   }
-  u;
+
+  async getAllActive() {
+    const result = await this.clientRepository.find({
+      where: { isActive: true },
+    });
+    console.log(result);
+    return result;
+  }
 }

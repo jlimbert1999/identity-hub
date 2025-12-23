@@ -9,12 +9,12 @@ import {
 } from '@nestjs/common';
 
 import { PaginationParamsDto } from 'src/modules/common';
-import { ClientService } from '../services';
+import { ApplicationService } from '../services';
 import { CreateClientDto, UpdateClientDto } from '../dtos';
 
 @Controller('clients')
 export class ClientController {
-  constructor(private readonly clientService: ClientService) {}
+  constructor(private readonly clientService: ApplicationService) {}
 
   @Post()
   create(@Body() createClientDto: CreateClientDto) {

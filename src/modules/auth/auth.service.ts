@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { Application, UserApplications } from '../client/entities';
+import { Application, UserApplication } from '../access/entities';
 import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
 import { User } from '../users/entities/user.entity';
 import {
@@ -319,5 +319,36 @@ export class AuthService {
     );
 
     return { access_token, refresh_token };
+  }
+
+  async validateSession(sessionId: string) {
+    // 1️⃣ Buscar sesión
+    const session: any | null = await this.cacheManager.get(
+      `session:${sessionId}`,
+    );
+
+    if (!session) {
+      return null;
+    }
+
+    // 2️⃣ Verificar expiración
+    if (Date.now() > session.expiresAt) {
+      await this.cacheManager.del(`session:${sessionId}`);
+      return null;
+    }
+
+    // 3️⃣ Cargar usuario del identity-hub
+    const user = await this.userRepository.findOneBy({ id: session.userId });
+
+    if (!user || !user.isActive) {
+      return null;
+    }
+
+    // 4️⃣ Devolver usuario “limpio”
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      roles: user.roles,
+    };
   }
 }

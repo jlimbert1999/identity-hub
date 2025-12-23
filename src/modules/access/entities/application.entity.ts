@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { UserApplications } from './user-assignment.entity';
+import { UserApplication } from './user-application.entity';
 
 @Entity('applications')
 export class Application {
@@ -30,8 +30,8 @@ export class Application {
   @Column({ default: true })
   isActive: boolean;
 
-  @OneToMany(() => UserApplications, (assignment) => assignment.client)
-  applications: UserApplications[];
+  @OneToMany(() => UserApplication, (assignment) => assignment.application)
+  applications: UserApplication[];
 
   @CreateDateColumn()
   createdAt: Date;

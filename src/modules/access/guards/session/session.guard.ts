@@ -1,0 +1,38 @@
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { Request, Response } from 'express';
+import { AuthService } from 'src/modules/auth/auth.service';
+
+@Injectable()
+export class SessionGuard implements CanActivate {
+  constructor(private readonly authService: AuthService) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    console.log('seces');
+    const req = ctx.switchToHttp().getRequest<Request>();
+    const res = ctx.switchToHttp().getResponse<Response>();
+
+    const sessionId = req.cookies?.session_id;
+    if (!sessionId) return this.fail(req, res);
+
+    const user = await this.authService.validateSession(sessionId);
+    if (!user) return this.fail(req, res);
+
+    req['user'] = user;
+    return true;
+  }
+
+  private fail(req: Request, res: Response): boolean {
+    // Si es una llamada fetch/XHR, devolvemos 401; si es navegación, redirect.
+    const accept = req.headers.accept ?? '';
+    const isApi =
+      accept.includes('application/json') ||
+      req.headers['x-requested-with'] === 'XMLHttpRequest';
+
+    if (isApi) {
+      res.status(401).json({ authenticated: false });
+    } else {
+      res.redirect('/login');
+    }
+    return false;
+  }
+}

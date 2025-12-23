@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import { AuthDto, RefreshTokenDto } from './dtos';
 import type { Request, Response } from 'express';
 import { AuthGuard } from './guards/auth/auth.guard';
+import { SessionGuard } from '../access/guards/session/session.guard';
 
 interface AuthorizeParams {
   client_id: string;
@@ -96,7 +97,7 @@ export class AuthController {
     // 3. Cargar pending request
     const oauthRequest = await this.authService.getPendingOAuthRequest();
     if (!oauthRequest) {
-      return response.redirect('/'); // fallback
+      return response.redirect('http://localhost:4300/apps'); // fallback
     }
 
     const { client_id, redirect_uri, state } = oauthRequest;
@@ -150,10 +151,19 @@ export class AuthController {
     return this.authService.refreshToken(body);
   }
 
+  // @Get('status')
+  // @UseGuards(AuthGuard)
+  // checkAuthStatus(@Req() req: Request) {
+  //   console.log(req);
+  //   return {
+  //     ok: true,
+  //     user: req['user'],
+  //   };
+  // }
+
   @Get('status')
-  @UseGuards(AuthGuard)
-  checkAuthStatus(@Req() req: Request) {
-    console.log(req["user"]);
+  @UseGuards(SessionGuard)
+  status(@Req() req: Request) {
     return {
       ok: true,
       user: req['user'],

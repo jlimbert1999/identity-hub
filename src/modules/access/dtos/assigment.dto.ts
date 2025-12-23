@@ -15,6 +15,6 @@ export class CreateAssigmentDto {
   @IsArray()
   @Type(() => Number)
   @IsNumber({}, { each: true })
-  @ArrayMinSize(2)
-  clientIds: number[];
+  @ArrayMinSize(1)
+  applicationIds: number[];
 }

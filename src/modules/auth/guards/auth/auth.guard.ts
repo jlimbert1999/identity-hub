@@ -15,6 +15,7 @@ export class AuthGuard implements CanActivate {
     private readonly usersService: UsersService,
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    console.log('sce');
     const request = context.switchToHttp().getRequest<Request>();
     const token = request.cookies['identity_access'] as string | undefined;
 
