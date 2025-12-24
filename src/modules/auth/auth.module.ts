@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { OAuthService } from './oauth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UsersModule } from '../users/users.module';
 import { EnvironmentVariables } from 'src/config';
 import { OauthController } from './controllers/oauth.controller';
+import { AuthService } from './services/auth.service';
 
 @Module({
   controllers: [AuthController, OauthController],
-  providers: [AuthService],
+  providers: [OAuthService, AuthService],
   imports: [
     JwtModule.registerAsync({
       imports: [ConfigModule],

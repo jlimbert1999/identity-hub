@@ -1,20 +1,20 @@
 import {
+  Res,
   Post,
   Body,
-  Controller,
-  Res,
   Get,
   Query,
-  UnauthorizedException,
   UseGuards,
-  Req,
+  Controller,
+  UnauthorizedException,
 } from '@nestjs/common';
 
-import { AuthService } from './auth.service';
+import { OAuthService } from './oauth.service';
 import { AuthDto, RefreshTokenDto } from './dtos';
 import type { Request, Response } from 'express';
-import { AuthGuard } from './guards/auth/auth.guard';
 import { SessionGuard } from '../access/guards/session/session.guard';
+import { GetUserRequest } from './decorators/get-user-request.decorator';
+import { User } from '../users/entities';
 
 interface AuthorizeParams {
   client_id: string;
@@ -24,7 +24,7 @@ interface AuthorizeParams {
 }
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: OAuthService) {}
 
   @Get('authorize')
   async authorize2(@Query() query: AuthorizeParams, @Res() res: Response) {
@@ -160,13 +160,4 @@ export class AuthController {
   //     user: req['user'],
   //   };
   // }
-
-  @Get('status')
-  @UseGuards(SessionGuard)
-  status(@Req() req: Request) {
-    return {
-      ok: true,
-      user: req['user'],
-    };
-  }
 }

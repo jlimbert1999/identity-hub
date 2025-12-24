@@ -15,15 +15,16 @@ import * as bcrypt from 'bcrypt';
 
 import { Application, UserApplication } from '../access/entities';
 import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
-import { User } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import {
   RefreshTokenPayload,
   GenerateTokenProperties,
   AuthAccessTokenPayload,
 } from './interfaces';
+import { MENU_CONFIG, MenuItem } from './constants/menu.config';
 
 @Injectable()
-export class AuthService {
+export class OAuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     // @InjectRepository(Client) private clientRepository: Repository<Client>,
@@ -264,7 +265,11 @@ export class AuthService {
   async createSession(userId: string): Promise<string> {
     const sessionId = crypto.randomUUID();
 
-    await this.cacheManager.set(`session:${sessionId}`, userId, 24 * 60 * 60);
+    await this.cacheManager.set(
+      `session:${sessionId}`,
+      userId,
+      24 * 60 * 60 * 10000,
+    );
 
     return sessionId;
   }
@@ -351,4 +356,5 @@ export class AuthService {
       roles: user.roles,
     };
   }
+
 }
