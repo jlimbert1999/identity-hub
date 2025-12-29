@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { ILike, Repository } from 'typeorm';
+import { EntityManager, ILike, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { ulid } from 'ulid';
 
@@ -28,7 +28,7 @@ export class UsersService {
       ...(term && {
         where: { fullName: ILike(`%${term}%`) },
       }),
-      relations: { applications: true },
+      relations: { accesses: true },
       order: {
         createdAt: 'DESC',
       },
@@ -36,60 +36,55 @@ export class UsersService {
     return { users, total };
   }
 
-  async create(userDto: CreateUserDto) {
-    await this.checkDuplicateLogin(userDto.login);
+  async create(dto: CreateUserDto, manager?: EntityManager) {
+    const repository = manager
+      ? manager.getRepository(User)
+      : this.userRepository;
 
+    const duplicate = await repository.findOne({ where: { login: dto.login } });
+    if (duplicate) {
+      throw new BadRequestException(`Duplicate login: ${dto.login}`);
+    }
     const externalKey = `IDH-U-${ulid()}`;
 
-    const passwordHash = await this.encryptPassword(userDto.password);
+    const passwordHash = await this.encryptPassword('123456');
 
-    const user = this.userRepository.create({
-      login: userDto.login,
+    const user = repository.create({
+      ...dto,
       password: passwordHash,
-      fullName: userDto.fullName,
-      relationKey: userDto.relationKey,
       externalKey,
     });
 
-    return this.userRepository.save(user);
+    return repository.save(user);
   }
 
-  async update(id: string, userDto: UpdateUserDto) {
-    const { password, ...toUpdate } = userDto;
+  async update(id: string, dto: UpdateUserDto, manager?: EntityManager) {
+    const repository = manager
+      ? manager.getRepository(User)
+      : this.userRepository;
 
-    const userDB = await this.userRepository.findOneBy({ id });
+    const userDB = await repository.findOneBy({ id });
 
     if (!userDB) throw new NotFoundException(`El usuario editado no existe`);
+    if (dto.login && userDB.login !== dto.login) {
+      const duplicate = await repository.findOne({
+        where: { login: dto.login },
+      });
 
-    if (userDto.login && userDto.login !== userDB.login) {
-      await this.checkDuplicateLogin(userDto.login);
+      if (duplicate) {
+        throw new BadRequestException(`Duplicate login: ${dto.login}`);
+      }
     }
-
-    if (password) {
-      userDB.password = await this.encryptPassword(password);
-    }
-
-    const updatedUser: Partial<User> = await this.userRepository.save({
+    return await repository.save({
       ...userDB,
-      ...toUpdate,
+      ...dto,
     });
-
-    delete updatedUser['password'];
-
-    return updatedUser;
   }
 
   async findByExternalKey(id: string) {
     return this.userRepository.findOne({
       where: { externalKey: id },
     });
-  }
-
-  private async checkDuplicateLogin(login: string) {
-    const exists = await this.userRepository.findOne({ where: { login } });
-    if (exists) {
-      throw new BadRequestException(`Duplicate login: ${login}`);
-    }
   }
 
   private async encryptPassword(password: string) {

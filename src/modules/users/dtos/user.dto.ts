@@ -1,5 +1,12 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsNotEmpty, IsString, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { UserRole } from '../entities';
 
 export class CreateUserDto {
   @IsNotEmpty()
@@ -14,9 +21,13 @@ export class CreateUserDto {
   @IsString()
   relationKey: string;
 
-  @IsNotEmpty()
-  @MinLength(6)
-  password: string;
+  @IsOptional()
+  @IsArray()
+  @IsEnum(UserRole, {
+    each: true,
+    message: 'Each value must be a valid transaction type.',
+  })
+  roles?: UserRole[];
 }
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {}

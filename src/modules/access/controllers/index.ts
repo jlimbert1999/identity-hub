@@ -1,2 +1,3 @@
 export * from './client.controller';
-export * from './assigment.controller';
+export * from './access.controller';
+export * from './hub.controller';

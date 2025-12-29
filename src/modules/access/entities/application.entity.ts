@@ -31,7 +31,7 @@ export class Application {
   isActive: boolean;
 
   @OneToMany(() => UserApplication, (assignment) => assignment.application)
-  applications: UserApplication[];
+  userAccesses: UserApplication[];
 
   @CreateDateColumn()
   createdAt: Date;

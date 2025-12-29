@@ -5,13 +5,13 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import KeyvRedis from '@keyv/redis';
+import { join } from 'path';
 
 import { AccessModule } from './modules/access/access.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 
 import { EnvironmentVariables, validate } from './config';
-import { join } from 'path';
 
 @Module({
   imports: [

@@ -1,2 +1,3 @@
 export * from './application.service';
-export * from './assigment.service';
+export * from './access.service';
+export * from './hub.service';

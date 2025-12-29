@@ -21,7 +21,7 @@ export class User {
   @Column({ unique: true })
   login: string;
 
-  @Column()
+  @Column({ select: false })
   password: string;
 
   @Column()
@@ -54,5 +54,5 @@ export class User {
   updatedAt: Date;
 
   @OneToMany(() => UserApplication, (UserApplications) => UserApplications.user)
-  applications: UserApplication[];
+  accesses: UserApplication[];
 }

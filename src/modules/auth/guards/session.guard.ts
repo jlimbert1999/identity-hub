@@ -1,10 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { OAuthService } from 'src/modules/auth/oauth.service';
+import { SSOAuthService } from '../services';
 
 @Injectable()
 export class SessionGuard implements CanActivate {
-  constructor(private readonly authService: OAuthService) {}
+  constructor(private readonly authService: SSOAuthService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();
@@ -12,7 +12,6 @@ export class SessionGuard implements CanActivate {
 
     const sessionId = req.cookies['session_id'] as string | undefined;
     if (!sessionId) return this.fail(req, res);
-
     const user = await this.authService.validateSession(sessionId);
     if (!user) return this.fail(req, res);
 

@@ -1,12 +1,11 @@
 import {
   Entity,
   Unique,
-  Index,
-  Column,
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
   PrimaryGeneratedColumn,
+  Column,
 } from 'typeorm';
 
 import { User } from 'src/modules/users/entities/user.entity';
@@ -18,14 +17,12 @@ export class UserApplication {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, (user) => user.applications, { onDelete: 'CASCADE' })
-  @Index()
+  @ManyToOne(() => User, (user) => user.accesses, { onDelete: 'CASCADE' })
   user: User;
 
-  @ManyToOne(() => Application, (system) => system.applications, {
+  @ManyToOne(() => Application, (system) => system.userAccesses, {
     onDelete: 'CASCADE',
   })
-  @Index()
   application: Application;
 
   @Column({ nullable: true })
@@ -36,7 +33,4 @@ export class UserApplication {
 
   @CreateDateColumn()
   createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

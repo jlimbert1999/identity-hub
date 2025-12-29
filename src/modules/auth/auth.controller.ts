@@ -7,12 +7,13 @@ import {
   UseGuards,
   Controller,
   UnauthorizedException,
+  Req,
 } from '@nestjs/common';
 
-import { OAuthService } from './oauth.service';
+import { SSOAuthService } from './services/oauth.service';
 import { AuthDto, RefreshTokenDto } from './dtos';
 import type { Request, Response } from 'express';
-import { SessionGuard } from '../access/guards/session/session.guard';
+import { SessionGuard } from './guards/session.guard';
 import { GetUserRequest } from './decorators/get-user-request.decorator';
 import { User } from '../users/entities';
 
@@ -24,10 +25,14 @@ interface AuthorizeParams {
 }
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: OAuthService) {}
+  constructor(private readonly authService: SSOAuthService) {}
 
   @Get('authorize')
-  async authorize2(@Query() query: AuthorizeParams, @Res() res: Response) {
+  async authorize2(
+    @Query() query: AuthorizeParams,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
     const { client_id, redirect_uri, response_type, state } = query;
 
     // 1. Validar el tipo de respuesta
@@ -42,27 +47,29 @@ export class AuthController {
     );
 
     if (!client) {
-      return res.status(400).send('Invalid client_id or redirect_uri');
+      return res.status(400).send('Invalid client');
     }
 
     // 3. Verificar sesión SSO (IdentityHub cookie)
-    const sessionId = res.req.cookies['session_id'] as string | undefined;
+    const sessionId = req.cookies['session_id'] as string | undefined;
 
     if (!sessionId) {
-      // 3a. Guardar intento OAuth en Redis para recuperarlo después del login
-      await this.authService.savePendingOAuthRequest({
+      const oauthLoginId = crypto.randomUUID();
+
+      await this.authService.savePendingOAuthRequest(oauthLoginId, {
         client_id,
         redirect_uri,
         state,
       });
 
-      // 3b. Redirigir al login del frontend del IdentityHub
-      return res.redirect(`/login`);
+      return res.redirect(`/login?context=oauth&loginId=${oauthLoginId}`);
     }
 
-    // 4. Si hay sesión, generar authorization code
+    // si ya hay sesión → OAuth directo
+    const userId = (await this.authService.getSessionUser(sessionId)) as string;
+
     const code = await this.authService.generateAuthorizationCode({
-      userId: (await this.authService.getSessionUser(sessionId)) ?? '',
+      userId,
       clientId: client_id,
       redirectUri: redirect_uri,
     });
@@ -71,45 +78,51 @@ export class AuthController {
     const url = new URL(redirect_uri);
     url.searchParams.set('code', code);
     if (state) url.searchParams.set('state', state);
-    console.log(url.toString());
+
     return res.redirect(url.toString());
   }
 
   @Post('login')
-  async login(@Body() body: AuthDto, @Res() response: Response) {
-    // Validar credenciales
-    const user = await this.authService.validateUser(body);
-    if (!user) {
-      return response.status(401).send('Invalid credentials');
-    }
+  async login(
+    @Body() body: AuthDto,
+    @Req() request: Request,
+    @Query('context') context: 'oauth' | undefined,
+    @Query('loginId') loginId: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const user = await this.authService.login(body);
 
-    // Crear sesión central
-    const sessionId = await this.authService.createSession(user.id);
+    const sessionId = await this.authService.createSession(user);
 
-    // Guardar cookie HttpOnly
     response.cookie('session_id', sessionId, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false, // true en prod
-      maxAge: 24 * 60 * 60 * 1000, // 1 día
+      secure: false,
+      maxAge: 24 * 60 * 60 * 1000,
     });
 
-    // 3. Cargar pending request
-    const oauthRequest = await this.authService.getPendingOAuthRequest();
+    // ✅ LOGIN NORMAL (identity-hub)
+    if (context !== 'oauth' || !loginId) {
+      return response.redirect('http://localhost:4200/apps');
+    }
+
+    // ✅ LOGIN OAUTH
+    const oauthRequest = await this.authService.getPendingOAuthRequest(loginId);
+
     if (!oauthRequest) {
-      return response.redirect('http://localhost:4300/apps'); // fallback
+      return response.redirect('http://localhost:4200/apps');
     }
 
     const { client_id, redirect_uri, state } = oauthRequest;
 
-    // 4. Generar authorization code
     const code = await this.authService.generateAuthorizationCode({
       userId: user.id,
       clientId: client_id,
       redirectUri: redirect_uri,
     });
 
-    // 5. Redirigir al callback del SP
+    await this.authService.clearPendingOAuthRequest(loginId);
+
     const url = new URL(redirect_uri);
     url.searchParams.set('code', code);
     if (state) url.searchParams.set('state', state);

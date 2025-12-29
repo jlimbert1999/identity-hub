@@ -13,18 +13,17 @@ import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { Application, UserApplication } from '../access/entities';
-import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from './dtos/auth.dto';
-import { User, UserRole } from '../users/entities/user.entity';
+import { Application, UserApplication } from '../../access/entities';
+import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from '../dtos/auth.dto';
+import { User, UserRole } from '../../users/entities/user.entity';
 import {
   RefreshTokenPayload,
   GenerateTokenProperties,
   AuthAccessTokenPayload,
-} from './interfaces';
-import { MENU_CONFIG, MenuItem } from './constants/menu.config';
+} from '../interfaces';
 
 @Injectable()
-export class OAuthService {
+export class SSOAuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     // @InjectRepository(Client) private clientRepository: Repository<Client>,
@@ -32,10 +31,13 @@ export class OAuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser({ login, password }: AuthDto): Promise<User> {
-    const userDB = await this.userRepository.findOne({
-      where: { login },
-    });
+  async login({ login, password }: AuthDto): Promise<User> {
+    const userDB = await this.userRepository
+      .createQueryBuilder('user')
+      .where('user.login = :login', { login })
+      .addSelect('user.password')
+      .getOne();
+
     if (!userDB) {
       throw new BadRequestException('Usuario o contraseña incorrectos');
     }
@@ -143,7 +145,7 @@ export class OAuthService {
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      relations: { applications: true },
+      relations: { accesses: true },
     });
 
     if (!user) throw new UnauthorizedException();
@@ -241,36 +243,44 @@ export class OAuthService {
     return await this.cacheManager.get<string>(`session:${sessionId}`);
   }
 
-  async savePendingOAuthRequest(data: {
+  async savePendingOAuthRequest(
+    oauthLoginId: string,
+    data: { client_id: string; redirect_uri: string; state?: string },
+    ttlSeconds = 300, // 5 minutos
+  ): Promise<void> {
+    const key = `pending_oauth:${oauthLoginId}`;
+
+    await this.cacheManager.set(
+      key,
+      data,
+      ttlSeconds * 1000, // CacheManager usa ms
+    );
+  }
+
+  async getPendingOAuthRequest(oauthLoginId: string): Promise<{
     client_id: string;
     redirect_uri: string;
     state?: string;
-  }) {
-    // 5 minutos de vigencia
-    await this.cacheManager.set('pendingOAuth', data, 300_000);
+  } | null> {
+    const key = `pending_oauth:${oauthLoginId}`;
+
+    const data = await this.cacheManager.get<{
+      client_id: string;
+      redirect_uri: string;
+      state?: string;
+    }>(key);
+    return data ?? null;
   }
 
-  async getPendingOAuthRequest(): Promise<
-    | {
-        client_id: string;
-        redirect_uri: string;
-        state?: string;
-      }
-    | null
-    | undefined
-  > {
-    return await this.cacheManager.get('pendingOAuth');
+  async clearPendingOAuthRequest(oauthLoginId: string): Promise<void> {
+    const key = `pending_oauth:${oauthLoginId}`;
+    await this.cacheManager.del(key);
   }
 
-  async createSession(userId: string): Promise<string> {
+  async createSession(user: User) {
     const sessionId = crypto.randomUUID();
-
-    await this.cacheManager.set(
-      `session:${sessionId}`,
-      userId,
-      24 * 60 * 60 * 10000,
-    );
-
+    const key = `session:${sessionId}`;
+    await this.cacheManager.set(key, user.id, 24 * 60 * 60 * 1000);
     return sessionId;
   }
 
@@ -327,23 +337,9 @@ export class OAuthService {
   }
 
   async validateSession(sessionId: string) {
-    // 1️⃣ Buscar sesión
-    const session: any | null = await this.cacheManager.get(
-      `session:${sessionId}`,
-    );
-
-    if (!session) {
-      return null;
-    }
-
-    // 2️⃣ Verificar expiración
-    if (Date.now() > session.expiresAt) {
-      await this.cacheManager.del(`session:${sessionId}`);
-      return null;
-    }
-
-    // 3️⃣ Cargar usuario del identity-hub
-    const user = await this.userRepository.findOneBy({ id: session.userId });
+    const userId = await this.cacheManager.get<string>(`session:${sessionId}`);
+    if (!userId) return null;
+    const user = await this.userRepository.findOneBy({ id: userId });
 
     if (!user || !user.isActive) {
       return null;
@@ -356,5 +352,4 @@ export class OAuthService {
       roles: user.roles,
     };
   }
-
 }
