@@ -1,4 +1,10 @@
-import { Equals, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  Equals,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class AuthDto {
   @IsNotEmpty()
@@ -12,17 +18,11 @@ export class AuthDto {
   redirectUrl?: string;
 }
 
-// export class AuthorizeDto {
-//   @IsString()
-//   clientId: string;
-
-//   @IsString()
-//   redirectUri: string;
-
-//   @IsString()
-//   @IsOptional()
-//   state?: string;
-// }
+export class LoginParamsDto {
+  @IsOptional()
+  @IsUUID()
+  auth_request_id?: string;
+}
 
 export class AuthorizeDto {
   @IsString()

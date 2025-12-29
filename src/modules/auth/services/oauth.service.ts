@@ -14,13 +14,20 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { Application, UserApplication } from '../../access/entities';
-import { AuthDto, ExchangeCodeDto, RefreshTokenDto } from '../dtos/auth.dto';
+import {
+  AuthDto,
+  ExchangeCodeDto,
+  LoginParamsDto,
+  RefreshTokenDto,
+} from '../dtos/auth.dto';
 import { User, UserRole } from '../../users/entities/user.entity';
 import {
   RefreshTokenPayload,
   GenerateTokenProperties,
   AuthAccessTokenPayload,
+  PendingAuthRequest,
 } from '../interfaces';
+import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
 
 @Injectable()
 export class SSOAuthService {
@@ -39,16 +46,16 @@ export class SSOAuthService {
       .getOne();
 
     if (!userDB) {
-      throw new BadRequestException('Usuario o contraseña incorrectos');
+      throw new AuthException(AuthErrorCode.INVALID_CREDENTIALS);
     }
 
     const isValid = bcrypt.compareSync(password, userDB.password);
     if (!isValid) {
-      throw new BadRequestException('Usuario o contraseña incorrectos');
+      throw new AuthException(AuthErrorCode.INVALID_CREDENTIALS);
     }
 
     if (!userDB.isActive) {
-      throw new BadRequestException('El usuario ha sido deshabilitado');
+      throw new AuthException(AuthErrorCode.USER_DISABLED);
     }
 
     return userDB;
@@ -243,36 +250,18 @@ export class SSOAuthService {
     return await this.cacheManager.get<string>(`session:${sessionId}`);
   }
 
-  async savePendingOAuthRequest(
-    oauthLoginId: string,
-    data: { client_id: string; redirect_uri: string; state?: string },
-    ttlSeconds = 300, // 5 minutos
-  ): Promise<void> {
-    const key = `pending_oauth:${oauthLoginId}`;
-
-    await this.cacheManager.set(
-      key,
-      data,
-      ttlSeconds * 1000, // CacheManager usa ms
-    );
+  async saveOAuthRequest(oAuthRequestId: string, data: PendingAuthRequest) {
+    const key = `pending_oauth:${oAuthRequestId}`;
+    await this.cacheManager.set(key, data, 300 * 1000);
   }
 
-  async getPendingOAuthRequest(oauthLoginId: string): Promise<{
-    client_id: string;
-    redirect_uri: string;
-    state?: string;
-  } | null> {
-    const key = `pending_oauth:${oauthLoginId}`;
-
-    const data = await this.cacheManager.get<{
-      client_id: string;
-      redirect_uri: string;
-      state?: string;
-    }>(key);
+  async getOAuthRequest(oAuthRequestId: string) {
+    const key = `pending_oauth:${oAuthRequestId}`;
+    const data = await this.cacheManager.get<PendingAuthRequest>(key);
     return data ?? null;
   }
 
-  async clearPendingOAuthRequest(oauthLoginId: string): Promise<void> {
+  async clearOAuthRequest(oauthLoginId: string): Promise<void> {
     const key = `pending_oauth:${oauthLoginId}`;
     await this.cacheManager.del(key);
   }
@@ -351,5 +340,45 @@ export class SSOAuthService {
       fullName: user.fullName,
       roles: user.roles,
     };
+  }
+
+  async resolveLoginSuccessRedirect(user: User, params: LoginParamsDto) {
+    const { auth_request_id } = params;
+
+    if (!auth_request_id) return 'http://localhost:4200/apps';
+
+    const oauthRequest = await this.getOAuthRequest(auth_request_id);
+
+    if (!oauthRequest) return 'http://localhost:4200/apps';
+
+    await this.clearOAuthRequest(auth_request_id);
+
+    const code = await this.generateAuthorizationCode({
+      userId: user.id,
+      clientId: oauthRequest.client_id,
+      redirectUri: oauthRequest.redirect_uri,
+    });
+
+    const url = new URL(oauthRequest.redirect_uri);
+
+    url.searchParams.set('code', code);
+
+    if (oauthRequest.state) url.searchParams.set('state', oauthRequest.state);
+
+    return url.toString();
+  }
+
+  resolveLoginErrorRedirect(error: AuthException, params: LoginParamsDto) {
+    const { auth_request_id } = params;
+
+    const url = new URL('http://localhost:4200/login');
+
+    url.searchParams.set('error', error.code);
+
+    if (auth_request_id) {
+      url.searchParams.set('auth_request_id', auth_request_id);
+    }
+
+    return url.toString();
   }
 }

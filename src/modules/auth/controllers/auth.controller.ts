@@ -1,21 +1,19 @@
 import {
   Res,
+  Req,
   Post,
   Body,
   Get,
   Query,
-  UseGuards,
   Controller,
   UnauthorizedException,
-  Req,
 } from '@nestjs/common';
 
-import { SSOAuthService } from './services/oauth.service';
-import { AuthDto, RefreshTokenDto } from './dtos';
+import { SSOAuthService } from '../services/oauth.service';
+import { AuthDto, LoginParamsDto, RefreshTokenDto } from '../dtos';
 import type { Request, Response } from 'express';
-import { SessionGuard } from './guards/session.guard';
-import { GetUserRequest } from './decorators/get-user-request.decorator';
-import { User } from '../users/entities';
+
+import { AuthException } from '../exceptions/auth.exception';
 
 interface AuthorizeParams {
   client_id: string;
@@ -56,13 +54,13 @@ export class AuthController {
     if (!sessionId) {
       const oauthLoginId = crypto.randomUUID();
 
-      await this.authService.savePendingOAuthRequest(oauthLoginId, {
+      await this.authService.saveOAuthRequest(oauthLoginId, {
         client_id,
         redirect_uri,
         state,
       });
 
-      return res.redirect(`/login?context=oauth&loginId=${oauthLoginId}`);
+      return res.redirect(`/login?&auth_request_id=${oauthLoginId}`);
     }
 
     // si ya hay sesión → OAuth directo
@@ -85,49 +83,37 @@ export class AuthController {
   @Post('login')
   async login(
     @Body() body: AuthDto,
-    @Req() request: Request,
-    @Query('context') context: 'oauth' | undefined,
-    @Query('loginId') loginId: string | undefined,
+    @Query() queryParams: LoginParamsDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const user = await this.authService.login(body);
+    try {
+      const user = await this.authService.login(body);
 
-    const sessionId = await this.authService.createSession(user);
+      const sessionId = await this.authService.createSession(user);
 
-    response.cookie('session_id', sessionId, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-      maxAge: 24 * 60 * 60 * 1000,
-    });
+      response.cookie('session_id', sessionId, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: false,
+        maxAge: 24 * 60 * 60 * 1000,
+      });
 
-    // ✅ LOGIN NORMAL (identity-hub)
-    if (context !== 'oauth' || !loginId) {
-      return response.redirect('http://localhost:4200/apps');
+      const redirectUrl = await this.authService.resolveLoginSuccessRedirect(
+        user,
+        queryParams,
+      );
+
+      return response.redirect(redirectUrl);
+    } catch (error: unknown) {
+      if (error instanceof AuthException) {
+        const redirectUrl = this.authService.resolveLoginErrorRedirect(
+          error,
+          queryParams,
+        );
+        return response.redirect(redirectUrl);
+      }
+      throw error;
     }
-
-    // ✅ LOGIN OAUTH
-    const oauthRequest = await this.authService.getPendingOAuthRequest(loginId);
-
-    if (!oauthRequest) {
-      return response.redirect('http://localhost:4200/apps');
-    }
-
-    const { client_id, redirect_uri, state } = oauthRequest;
-
-    const code = await this.authService.generateAuthorizationCode({
-      userId: user.id,
-      clientId: client_id,
-      redirectUri: redirect_uri,
-    });
-
-    await this.authService.clearPendingOAuthRequest(loginId);
-
-    const url = new URL(redirect_uri);
-    url.searchParams.set('code', code);
-    if (state) url.searchParams.set('state', state);
-
-    return response.redirect(url.toString());
   }
 
   @Post('token')
@@ -163,14 +149,4 @@ export class AuthController {
   refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refreshToken(body);
   }
-
-  // @Get('status')
-  // @UseGuards(AuthGuard)
-  // checkAuthStatus(@Req() req: Request) {
-  //   console.log(req);
-  //   return {
-  //     ok: true,
-  //     user: req['user'],
-  //   };
-  // }
 }
