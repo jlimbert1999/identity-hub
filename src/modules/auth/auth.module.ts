@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
-import { AuthController } from './controllers/auth.controller';
-import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+
+import { AuthController, OauthController } from './controllers';
+import { AuthService, SSOAuthService } from './services';
 import { UsersModule } from '../users/users.module';
 import { EnvironmentVariables } from 'src/config';
-import { OauthController } from './controllers/oauth.controller';
-import { AuthService, SSOAuthService } from './services';
-import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
   controllers: [AuthController, OauthController],

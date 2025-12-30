@@ -1,7 +1,6 @@
 import {
   Inject,
   Injectable,
-  ForbiddenException,
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -13,18 +12,18 @@ import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import { Application, UserApplication } from '../../access/entities';
 import {
   AuthDto,
-  ExchangeCodeDto,
   LoginParamsDto,
+  ExchangeCodeDto,
   RefreshTokenDto,
+  AuthorizeParamsDto,
 } from '../dtos/auth.dto';
 import { User, UserRole } from '../../users/entities/user.entity';
 import {
-  RefreshTokenPayload,
   GenerateTokenProperties,
   AuthAccessTokenPayload,
+  RefreshTokenPayload,
   PendingAuthRequest,
 } from '../interfaces';
 import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
@@ -33,7 +32,6 @@ import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
 export class SSOAuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
-    // @InjectRepository(Client) private clientRepository: Repository<Client>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private jwtService: JwtService,
   ) {}
@@ -250,9 +248,11 @@ export class SSOAuthService {
     return await this.cacheManager.get<string>(`session:${sessionId}`);
   }
 
-  async saveOAuthRequest(oAuthRequestId: string, data: PendingAuthRequest) {
+  async savePendingOAuthRequest(data: PendingAuthRequest) {
+    const oAuthRequestId = crypto.randomUUID();
     const key = `pending_oauth:${oAuthRequestId}`;
     await this.cacheManager.set(key, data, 300 * 1000);
+    return oAuthRequestId;
   }
 
   async getOAuthRequest(oAuthRequestId: string) {
@@ -266,14 +266,14 @@ export class SSOAuthService {
     await this.cacheManager.del(key);
   }
 
-  async createSession(user: User) {
+  async createSession(user: User): Promise<string> {
     const sessionId = crypto.randomUUID();
     const key = `session:${sessionId}`;
     await this.cacheManager.set(key, user.id, 24 * 60 * 60 * 1000);
     return sessionId;
   }
 
-  async getSessionUser(sessionId: string): Promise<string | null | undefined> {
+  async getSessionUser(sessionId: string): Promise<string | undefined> {
     return await this.cacheManager.get(`session:${sessionId}`);
   }
 
@@ -380,5 +380,37 @@ export class SSOAuthService {
     }
 
     return url.toString();
+  }
+
+  async handleAuthorize(query: AuthorizeParamsDto, sessionId?: string) {
+    console.log(query);
+    const { client_id, redirect_uri, state } = query;
+
+    const userId = sessionId ? await this.getSessionUser(sessionId) : undefined;
+
+    if (!userId) {
+      const oAuthRequestId = await this.savePendingOAuthRequest({
+        client_id,
+        redirect_uri,
+        state,
+      });
+
+      const loginUrl = new URL('http://localhost:4200/login');
+      loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
+
+      return loginUrl.toString();
+    }
+
+    const code = await this.generateAuthorizationCode({
+      userId,
+      clientId: client_id,
+      redirectUri: redirect_uri,
+    });
+
+    const redirectUrl = new URL(redirect_uri);
+    redirectUrl.searchParams.set('code', code);
+    if (state) redirectUrl.searchParams.set('state', state);
+
+    return redirectUrl.toString();
   }
 }

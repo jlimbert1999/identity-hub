@@ -24,7 +24,7 @@ export class LoginParamsDto {
   auth_request_id?: string;
 }
 
-export class AuthorizeDto {
+export class AuthorizeParamsDto {
   @IsString()
   @IsNotEmpty()
   client_id: string;
@@ -38,7 +38,7 @@ export class AuthorizeDto {
 
   @IsString()
   @IsNotEmpty()
-  scope: string;
+  state: string;
 }
 export class ExchangeCodeDto {
   @IsString()
@@ -46,24 +46,6 @@ export class ExchangeCodeDto {
 
   @IsString()
   client_id: string;
-}
-
-export class AuthorizeDtoGrouped {
-  // @IsString()
-  // login: string;
-
-  // @IsString()
-  // password: string;
-
-  @IsString()
-  clientId: string;
-
-  @IsString()
-  redirectUri: string;
-
-  @IsOptional()
-  @IsString()
-  state?: string;
 }
 
 export class RefreshTokenDto {
