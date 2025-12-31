@@ -3,3 +3,9 @@ export interface PendingAuthRequest {
   redirect_uri: string;
   state: string;
 }
+
+export interface AuthorizationContext {
+  userId: string;
+  clientId: string;
+  redirectUri: string;
+}

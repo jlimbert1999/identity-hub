@@ -8,25 +8,24 @@ import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 
-import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import {
   AuthDto,
   LoginParamsDto,
-  ExchangeCodeDto,
   RefreshTokenDto,
+  TokenRequestDto,
   AuthorizeParamsDto,
-} from '../dtos/auth.dto';
-import { User, UserRole } from '../../users/entities/user.entity';
+} from '../dtos';
 import {
-  GenerateTokenProperties,
-  AuthAccessTokenPayload,
-  RefreshTokenPayload,
   PendingAuthRequest,
+  RefreshTokenPayload,
+  AuthorizationContext,
+  GenerateTokenProperties,
 } from '../interfaces';
 import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
+import { User } from 'src/modules/users/entities';
 
 @Injectable()
 export class SSOAuthService {
@@ -59,42 +58,6 @@ export class SSOAuthService {
     return userDB;
   }
 
-  async exchangeCode(data: ExchangeCodeDto) {
-    const { code, client_id } = data;
-    console.log(code, client_id);
-
-    const payload = await this.consumeAuthCode(code, client_id);
-    // payload = { userId, clientId }
-
-    // Recuperas el usuario
-    // (podrías mover esto a AuthService si prefieres)
-    console.log(payload);
-    const user = await this.userRepository.findOne({
-      where: { id: payload.userId },
-    });
-    console.log(user);
-
-    if (!user) {
-      throw new BadRequestException('Usuario no encontrado para este code');
-    }
-
-    return this.issueTokens(user, payload.clientId);
-  }
-
-  async generateAuthCode(clientId: string) {
-    const code = randomBytes(32).toString('hex');
-
-    const payload = { clientId };
-
-    try {
-      await this.cacheManager.set(`authcode:${code}`, payload, 120 * 1000);
-    } catch (error) {
-      console.log(error);
-    }
-
-    return code;
-  }
-
   async consumeAuthCode(code: string, clientId: string) {
     const payload: { userId: string; clientId: string } | undefined =
       await this.cacheManager.get(`authcode:${code}`);
@@ -112,37 +75,6 @@ export class SSOAuthService {
     return payload;
   }
 
-  async issueTokens(user: User, clientId: string) {
-    const payloadBase = {
-      sub: user.id,
-      clientId,
-      // si tienes globalUserId: globalUserId: user.globalId,
-    };
-
-    const accessToken = await this.jwtService.signAsync(payloadBase, {
-      expiresIn: '1m',
-    });
-
-    const refreshToken = await this.jwtService.signAsync(
-      { ...payloadBase, type: 'refresh' },
-      {
-        expiresIn: '1d',
-      },
-    );
-    console.log('generate');
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        login: user.login,
-        // agrega lo que quieras exponer:
-        // name: user.name,
-        // email: user.email,
-      },
-    };
-  }
-
   async refreshToken(dto: RefreshTokenDto) {
     const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
       dto.refreshToken,
@@ -155,43 +87,11 @@ export class SSOAuthService {
 
     if (!user) throw new UnauthorizedException();
 
-    const hasAssignment = await this.userHasClientAssignment(
-      user,
-      payload.clientKey,
-    );
-    if (!hasAssignment) throw new UnauthorizedException();
-
     return this.generateAuthTokens({
       sub: user.id,
       externalKey: user.externalKey,
       clientKey: payload.clientKey,
     });
-  }
-
-  async refreshInternalToken(refreshToken: string) {
-    const payload =
-      await this.jwtService.verifyAsync<RefreshTokenPayload>(refreshToken);
-
-    // if (payload.clientKey !== 'identity-hub-admin') {
-    //   throw new UnauthorizedException();
-    // }
-
-    const user = await this.userRepository.findOne({
-      where: { id: payload.sub },
-    });
-
-    if (!user) throw new UnauthorizedException();
-
-    return this.generateAuthTokens({
-      sub: user.id,
-      externalKey: user.externalKey,
-      clientKey: 'identity-hub-admin',
-    });
-  }
-
-  private async userHasClientAssignment(user: User, clientKey: string) {
-    return true;
-    // return user.assignments.some((user) => user === client.id);
   }
 
   private async generateAuthTokens(properties: GenerateTokenProperties) {
@@ -207,40 +107,6 @@ export class SSOAuthService {
     );
 
     return { accessToken, refreshToken };
-  }
-
-  async generateApiTokens(user: User) {
-    const payload: AuthAccessTokenPayload = { sub: user.id };
-    const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
-    });
-
-    const refreshToken = await this.jwtService.signAsync(
-      {
-        sub: user.id,
-        type: 'identity',
-      },
-      { expiresIn: '7d' },
-    );
-
-    return { accessToken, refreshToken };
-  }
-
-  // 🔹 1. Validar que client_id existe y redirect_uri es válido
-  async validateClientRedirect(
-    clientId: string,
-    redirectUri: string,
-  ): Promise<boolean> {
-    // const client = await this.clientRepository.findOne({
-    //   where: { clientKey: clientId },
-    // });
-
-    // if (!client) return false;
-
-    // El redirect debe coincidir EXACTAMENTE
-    // if (client.re !== redirectUri) return false;
-
-    return true;
   }
 
   // 2️⃣ Obtener userId desde una sesión
@@ -277,31 +143,35 @@ export class SSOAuthService {
     return await this.cacheManager.get(`session:${sessionId}`);
   }
 
-  async generateAuthorizationCode(data: {
-    userId: string;
-    clientId: string;
-    redirectUri: string;
-  }) {
+  async createAuthorizationContext(context: AuthorizationContext) {
     const code = crypto.randomUUID();
-
-    await this.cacheManager.set(`authcode:${code}`, data, 300);
-
+    await this.cacheManager.set(`authorization_context:${code}`, context, 300);
     return code;
   }
 
-  async consumeAuthorizationCode(code: string): Promise<{
-    userId: string;
-    clientId: string;
-    redirectUri: string;
-  } | null> {
-    const key = `authcode:${code}`;
-    const data = await this.cacheManager.get(key);
+  async exchangeAuthorizationCode(params: TokenRequestDto) {
+    const key = `authorization_context:${params.code}`;
 
-    if (!data) return null;
+    const context = await this.cacheManager.get<AuthorizationContext>(key);
 
-    // Evita reuso
+    if (!context) {
+      throw new UnauthorizedException('Invalid or expired authorization code');
+    }
+
+    if (context.clientId !== params.client_id) {
+      throw new UnauthorizedException('Invalid client');
+    }
+
+    if (context.redirectUri !== params.redirect_uri) {
+      throw new UnauthorizedException('Invalid redirect_uri');
+    }
+
     await this.cacheManager.del(key);
-    return data as any;
+
+    return await this.generateTokens({
+      userId: context.userId,
+      clientId: context.clientId,
+    });
   }
 
   async generateTokens(payload: { userId: string; clientId: string }) {
@@ -353,7 +223,7 @@ export class SSOAuthService {
 
     await this.clearOAuthRequest(auth_request_id);
 
-    const code = await this.generateAuthorizationCode({
+    const code = await this.createAuthorizationContext({
       userId: user.id,
       clientId: oauthRequest.client_id,
       redirectUri: oauthRequest.redirect_uri,
@@ -383,7 +253,6 @@ export class SSOAuthService {
   }
 
   async handleAuthorize(query: AuthorizeParamsDto, sessionId?: string) {
-    console.log(query);
     const { client_id, redirect_uri, state } = query;
 
     const userId = sessionId ? await this.getSessionUser(sessionId) : undefined;
@@ -401,7 +270,7 @@ export class SSOAuthService {
       return loginUrl.toString();
     }
 
-    const code = await this.generateAuthorizationCode({
+    const code = await this.createAuthorizationContext({
       userId,
       clientId: client_id,
       redirectUri: redirect_uri,

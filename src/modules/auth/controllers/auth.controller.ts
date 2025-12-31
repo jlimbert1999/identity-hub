@@ -1,13 +1,4 @@
-import {
-  Get,
-  Res,
-  Post,
-  Body,
-  Query,
-  Controller,
-  UnauthorizedException,
-  Req,
-} from '@nestjs/common';
+import { Get, Res, Post, Body, Query, Controller } from '@nestjs/common';
 
 import { SSOAuthService } from '../services/oauth.service';
 import {
@@ -15,6 +6,7 @@ import {
   AuthorizeParamsDto,
   LoginParamsDto,
   RefreshTokenDto,
+  TokenRequestDto,
 } from '../dtos';
 import type { Response } from 'express';
 
@@ -72,32 +64,8 @@ export class AuthController {
   }
 
   @Post('token')
-  async token(
-    @Body() dto: { code: string; client_id: string; redirect_uri: string },
-  ) {
-    const { code, client_id, redirect_uri } = dto;
-    const authCode = await this.authService.consumeAuthorizationCode(code);
-
-    if (!authCode) {
-      throw new UnauthorizedException('Invalid or expired code');
-    }
-
-    if (authCode.clientId !== client_id) {
-      throw new UnauthorizedException('Invalid client');
-    }
-
-    if (authCode.redirectUri !== redirect_uri) {
-      console.log(authCode.redirectUri);
-      throw new UnauthorizedException('Invalid redirect_uri');
-    }
-
-    // 1. Generar tokens
-    const tokens = await this.authService.generateTokens({
-      userId: authCode.userId,
-      clientId: authCode.clientId,
-    });
-
-    return tokens;
+  token(@Body() body: TokenRequestDto) {
+    return this.authService.exchangeAuthorizationCode(body);
   }
 
   @Post('refresh')

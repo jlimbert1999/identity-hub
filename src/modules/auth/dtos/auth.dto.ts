@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
 } from 'class-validator';
 
@@ -16,6 +17,17 @@ export class AuthDto {
   @IsString()
   @IsOptional()
   redirectUrl?: string;
+}
+
+export class TokenRequestDto {
+  @IsString()
+  code: string;
+
+  @IsString()
+  client_id: string;
+
+  @IsUrl()
+  redirect_uri: string;
 }
 
 export class LoginParamsDto {
