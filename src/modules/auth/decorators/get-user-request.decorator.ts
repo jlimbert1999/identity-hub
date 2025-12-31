@@ -11,7 +11,6 @@ export const GetUserRequest = createParamDecorator(
     const req: Request = ctx.switchToHttp().getRequest();
     const user = req['user'] as User | undefined;
     if (!user) {
-      console.log('User not fount in request');
       throw new InternalServerErrorException('User not found in request');
     }
     return propertiePath ? user[propertiePath] : user;

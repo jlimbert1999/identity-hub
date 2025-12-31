@@ -2,14 +2,14 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 
-import { AuthController, OauthController } from './controllers';
-import { AuthService, SSOAuthService } from './services';
+import { OAuthController, AuthController } from './controllers';
+import { AuthService, OAuthService } from './services';
 import { UsersModule } from '../users/users.module';
 import { EnvironmentVariables } from 'src/config';
 
 @Module({
-  controllers: [AuthController, OauthController],
-  providers: [AuthService, SSOAuthService],
+  controllers: [OAuthController, AuthController],
+  providers: [AuthService, OAuthService],
   imports: [
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -21,6 +21,6 @@ import { EnvironmentVariables } from 'src/config';
     }),
     UsersModule,
   ],
-  exports: [AuthService, SSOAuthService],
+  exports: [AuthService, OAuthService],
 })
 export class AuthModule {}

@@ -1,36 +1,76 @@
-import { Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Get, Res, Post, Body, Query, Controller } from '@nestjs/common';
+import type { Response } from 'express';
 
-import { SessionGuard } from 'src/modules/auth/guards/session.guard';
-import { User } from 'src/modules/users/entities/user.entity';
-import { GetUserRequest } from '../decorators/get-user-request.decorator';
-import { AuthService } from '../services';
-import type { Request, Response } from 'express';
+import {
+  AuthDto,
+  LoginParamsDto,
+  RefreshTokenDto,
+  TokenRequestDto,
+  AuthorizeParamsDto,
+} from '../dtos';
+
+import { AuthException } from '../exceptions/auth.exception';
+import { OAuthService } from '../services';
+import { Cookies } from '../decorators';
 
 @Controller('oauth')
-export class OauthController {
-  constructor(private authService: AuthService) {}
+export class OAuthController {
+  constructor(private readonly oAuthService: OAuthService) {}
 
-  @Get('status')
-  @UseGuards(SessionGuard)
-  checkAuthStatus(@GetUserRequest() user: User) {
-    return { user: user };
+  @Get('authorize')
+  async authorize(
+    @Query() query: AuthorizeParamsDto,
+    @Cookies('session_id') sessionId: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const url = await this.oAuthService.handleAuthorize(query, sessionId);
+    return res.redirect(url);
   }
 
-  @Post('logout')
-  async logout(
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
+  @Post('login')
+  async login(
+    @Body() body: AuthDto,
+    @Query() queryParams: LoginParamsDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    const sessionId = request.cookies['session_id'] as string | undefined;
-    if (sessionId) {
-      await this.authService.removeSession(sessionId);
-    }
+    try {
+      const user = await this.oAuthService.login(body);
 
-    response.clearCookie('session_id', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-    });
-    return { ok: true, message: 'Logout successful' };
+      const sessionId = await this.oAuthService.createSession(user);
+
+      res.cookie('session_id', sessionId, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: false,
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+
+      const redirectUrl = await this.oAuthService.resolveLoginSuccessRedirect(
+        user,
+        queryParams,
+      );
+      console.log(redirectUrl);
+
+      return res.redirect(redirectUrl);
+    } catch (error: unknown) {
+      if (error instanceof AuthException) {
+        const redirectUrl = this.oAuthService.resolveLoginErrorRedirect(
+          error,
+          queryParams,
+        );
+        return res.redirect(redirectUrl);
+      }
+      throw error;
+    }
+  }
+
+  @Post('token')
+  token(@Body() body: TokenRequestDto) {
+    return this.oAuthService.exchangeAuthorizationCode(body);
+  }
+
+  @Post('refresh')
+  refresh(@Body() body: RefreshTokenDto) {
+    return this.oAuthService.refreshToken(body);
   }
 }

@@ -23,15 +23,19 @@ import {
   RefreshTokenPayload,
   AuthorizationContext,
   GenerateTokenProperties,
+  SessionPayload,
 } from '../interfaces';
 import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
 import { User } from 'src/modules/users/entities';
+import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from 'src/config';
 
 @Injectable()
-export class SSOAuthService {
+export class OAuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private configService: ConfigService<EnvironmentVariables>,
     private jwtService: JwtService,
   ) {}
 
@@ -114,13 +118,6 @@ export class SSOAuthService {
     return await this.cacheManager.get<string>(`session:${sessionId}`);
   }
 
-  async savePendingOAuthRequest(data: PendingAuthRequest) {
-    const oAuthRequestId = crypto.randomUUID();
-    const key = `pending_oauth:${oAuthRequestId}`;
-    await this.cacheManager.set(key, data, 300 * 1000);
-    return oAuthRequestId;
-  }
-
   async getOAuthRequest(oAuthRequestId: string) {
     const key = `pending_oauth:${oAuthRequestId}`;
     const data = await this.cacheManager.get<PendingAuthRequest>(key);
@@ -130,23 +127,6 @@ export class SSOAuthService {
   async clearOAuthRequest(oauthLoginId: string): Promise<void> {
     const key = `pending_oauth:${oauthLoginId}`;
     await this.cacheManager.del(key);
-  }
-
-  async createSession(user: User): Promise<string> {
-    const sessionId = crypto.randomUUID();
-    const key = `session:${sessionId}`;
-    await this.cacheManager.set(key, user.id, 24 * 60 * 60 * 1000);
-    return sessionId;
-  }
-
-  async getSessionUser(sessionId: string): Promise<string | undefined> {
-    return await this.cacheManager.get(`session:${sessionId}`);
-  }
-
-  async createAuthorizationContext(context: AuthorizationContext) {
-    const code = crypto.randomUUID();
-    await this.cacheManager.set(`authorization_context:${code}`, context, 300);
-    return code;
   }
 
   async exchangeAuthorizationCode(params: TokenRequestDto) {
@@ -195,23 +175,6 @@ export class SSOAuthService {
     return { access_token, refresh_token };
   }
 
-  async validateSession(sessionId: string) {
-    const userId = await this.cacheManager.get<string>(`session:${sessionId}`);
-    if (!userId) return null;
-    const user = await this.userRepository.findOneBy({ id: userId });
-
-    if (!user || !user.isActive) {
-      return null;
-    }
-
-    // 4️⃣ Devolver usuario “limpio”
-    return {
-      id: user.id,
-      fullName: user.fullName,
-      roles: user.roles,
-    };
-  }
-
   async resolveLoginSuccessRedirect(user: User, params: LoginParamsDto) {
     const { auth_request_id } = params;
 
@@ -223,7 +186,7 @@ export class SSOAuthService {
 
     await this.clearOAuthRequest(auth_request_id);
 
-    const code = await this.createAuthorizationContext({
+    const code = await this.createAuthCode({
       userId: user.id,
       clientId: oauthRequest.client_id,
       redirectUri: oauthRequest.redirect_uri,
@@ -253,33 +216,56 @@ export class SSOAuthService {
   }
 
   async handleAuthorize(query: AuthorizeParamsDto, sessionId?: string) {
-    const { client_id, redirect_uri, state } = query;
+    const { clientId, redirectUri, state } = query;
 
-    const userId = sessionId ? await this.getSessionUser(sessionId) : undefined;
+    const session = sessionId ? await this.getSession(sessionId) : null;
 
-    if (!userId) {
-      const oAuthRequestId = await this.savePendingOAuthRequest({
-        client_id,
-        redirect_uri,
+    if (!session) {
+      const oAuthRequestId = await this.createPendingOAuthRequest({
+        client_id: clientId,
+        redirect_uri: redirectUri,
         state,
       });
 
-      const loginUrl = new URL('http://localhost:4200/login');
+      const loginUrl = new URL(
+        `${this.configService.getOrThrow('ROUTES_APPS')}`,
+      );
       loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
-
       return loginUrl.toString();
     }
 
-    const code = await this.createAuthorizationContext({
-      userId,
-      clientId: client_id,
-      redirectUri: redirect_uri,
-    });
+    const { userId } = session;
+    const code = await this.createAuthCode({ userId, clientId, redirectUri });
+    const resultUrl = new URL(redirectUri);
+    resultUrl.searchParams.set('code', code);
+    return resultUrl.toString();
+  }
 
-    const redirectUrl = new URL(redirect_uri);
-    redirectUrl.searchParams.set('code', code);
-    if (state) redirectUrl.searchParams.set('state', state);
+  private async createSession(payload: SessionPayload): Promise<string> {
+    const sessionId = crypto.randomUUID();
+    const key = `session:${sessionId}`;
+    const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
+    await this.cacheManager.set(key, payload, LABORAL_HOURS_MS);
+    return sessionId;
+  }
 
-    return redirectUrl.toString();
+  private async getSession(sessionId: string) {
+    const key = `session:${sessionId}`;
+    const session = await this.cacheManager.get<SessionPayload>(key);
+    return session ?? null;
+  }
+
+  private async createAuthCode(context: AuthorizationContext) {
+    const code = crypto.randomUUID();
+    const key = `authorization_context:${code}`;
+    await this.cacheManager.set(key, context, 5 * 60 * 1000);
+    return code;
+  }
+
+  private async createPendingOAuthRequest(data: PendingAuthRequest) {
+    const oAuthRequestId = crypto.randomUUID();
+    const key = `pending_oauth:${oAuthRequestId}`;
+    await this.cacheManager.set(key, data, 5 * 60 * 1000);
+    return oAuthRequestId;
   }
 }

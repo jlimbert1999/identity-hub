@@ -1,3 +1,4 @@
+import { Expose } from 'class-transformer';
 import {
   Equals,
   IsNotEmpty,
@@ -39,10 +40,13 @@ export class LoginParamsDto {
 export class AuthorizeParamsDto {
   @IsString()
   @IsNotEmpty()
-  client_id: string;
+  @Expose({ name: 'client_id' })
+  clientId: string;
 
+  @IsString()
   @IsNotEmpty()
-  redirect_uri: string;
+  @Expose({ name: 'redirect_uri' })
+  redirectUri: string;
 
   @IsString()
   @Equals('code', { message: 'response_type must be "code"' })
@@ -50,6 +54,7 @@ export class AuthorizeParamsDto {
 
   @IsString()
   @IsNotEmpty()
+  @IsOptional()
   state: string;
 }
 export class ExchangeCodeDto {

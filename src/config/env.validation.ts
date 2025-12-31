@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsNumber, IsString, validateSync } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, validateSync } from 'class-validator';
 
 export class EnvironmentVariables {
   @IsNumber()
@@ -18,7 +18,7 @@ export class EnvironmentVariables {
   DATABASE_USER: string;
 
   @IsString()
-  DATABASE_PASSWORD: StreamPipeOptions;
+  DATABASE_PASSWORD: string;
 
   @IsString()
   CACHE_STORE_HOST: string;
@@ -27,7 +27,16 @@ export class EnvironmentVariables {
   CACHE_STORE_PORT: number;
 
   @IsString()
+  @IsNotEmpty()
   JWT_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  ROUTES_APPS: string;
+
+  @IsString()
+  @IsNotEmpty()
+  ROUTES_LOGIN: string;
 }
 
 export function validate(config: Record<string, unknown>) {
