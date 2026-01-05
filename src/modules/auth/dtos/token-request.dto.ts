@@ -1,5 +1,5 @@
 import { Expose } from 'class-transformer';
-import { IsEnum, IsString, IsNotEmpty, IsUrl, IsOptional, ValidateIf } from 'class-validator';
+import { IsEnum, IsString, IsNotEmpty, IsOptional, ValidateIf } from 'class-validator';
 
 export enum GrantType {
   AUTHORIZATION_CODE = 'authorization_code',
@@ -26,7 +26,8 @@ export class TokenRequestDto {
   code?: string;
 
   @ValidateIf((o) => o.grantType === GrantType.AUTHORIZATION_CODE)
-  @IsUrl()
+  @IsString()
+  @IsNotEmpty()
   @Expose({ name: 'redirect_uri' })
   redirectUri?: string;
 

@@ -1,6 +1,5 @@
 import { Expose } from 'class-transformer';
-import { Equals, IsEnum, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
-
+import { Equals, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class AuthorizeParamsDto {
   @IsString()
@@ -15,6 +14,7 @@ export class AuthorizeParamsDto {
 
   @IsString()
   @Equals('code', { message: 'response type must be "code"' })
+  @Expose({ name: 'response_type' })
   responseType?: string;
 
   @IsString()
@@ -39,24 +39,9 @@ export class LoginDto {
   redirectUrl?: string;
 }
 
-
 export class LoginParamsDto {
   @IsOptional()
   @IsUUID()
   @Expose({ name: 'auth_request_id' })
   authRequestId?: string;
-}
-
-export class ExchangeCodeDto {
-  @IsString()
-  code: string;
-
-  @IsString()
-  client_id: string;
-}
-
-export class RefreshTokenDto {
-  @IsString()
-  @IsNotEmpty()
-  refreshToken: string;
 }

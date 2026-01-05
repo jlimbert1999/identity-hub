@@ -80,6 +80,8 @@ export class TokenService {
       sub: parsed.userId,
       clientId: parsed.clientId,
       scope: parsed.scope,
+      externalKey: user.externalKey,
+      name: user.fullName,
     });
   }
 

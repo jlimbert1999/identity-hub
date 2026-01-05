@@ -16,7 +16,6 @@ export class HubService {
       where: { user: { id: userId } },
       relations: { application: true },
     });
-    console.log(result);
     return result;
   }
 }

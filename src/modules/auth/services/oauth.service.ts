@@ -1,18 +1,19 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectRedis } from '@nestjs-modules/ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 
-import { SessionPayload, AuthorizationCodePayload } from '../interfaces';
 import { LoginParamsDto, TokenRequestDto, AuthorizeParamsDto, LoginDto, GrantType } from '../dtos';
+import { SessionPayload, AuthorizationCodePayload } from '../interfaces';
 import { AuthException } from '../exceptions/auth.exception';
 import { User } from 'src/modules/users/entities';
 
-import { EnvironmentVariables } from 'src/config';
 import { Application } from 'src/modules/access/entities';
+import { EnvironmentVariables } from 'src/config';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 
@@ -20,24 +21,30 @@ import { TokenService } from './token.service';
 export class OAuthService {
   constructor(
     @InjectRepository(Application) private appRepository: Repository<Application>,
-    // @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @InjectRedis() private readonly redis: Redis,
     private configService: ConfigService<EnvironmentVariables>,
     private tokenService: TokenService,
     private authService: AuthService,
   ) {}
 
-  async resolveAuthorizeRedirectUrl(params: AuthorizeParamsDto, sessionId?: string) {
+  async handleAuthorizeRequest(params: AuthorizeParamsDto, sessionId?: string) {
     const application = await this.validateApplication(params.clientId, params.redirectUri);
-
     const session = sessionId ? await this.getSession(sessionId) : null;
-
     if (!session) {
       return await this.redirectToLoginWithPendingRequest(params);
     }
-
     await this.authService.checkUserAppAccess(session.userId, application.id);
-
-    return this.redirectWithAuthorizationCode(session, params);
+    return this.redirectWithAuthorizationCode(
+      {
+        userId: session.userId,
+        fullName: session.fullName,
+        clientId: params.clientId,
+        redirectUri: params.redirectUri,
+        scope: params.scope,
+        externalKey: session.externalKey,
+      },
+      params,
+    );
   }
 
   async login(dto: LoginDto) {
@@ -58,7 +65,8 @@ export class OAuthService {
     }
 
     if (dto.grantType === GrantType.AUTHORIZATION_CODE) {
-      return await this.exchangeAuthorizationCode(dto);
+      const result = await this.exchangeAuthorizationCode(dto);
+      return { ...result, context: { defaultRole: app.defaultRole } };
     }
 
     return await this.tokenService.rotateRefreshToken(dto.refreshToken, dto.clientId);
@@ -66,26 +74,25 @@ export class OAuthService {
 
   private async exchangeAuthorizationCode(params: TokenRequestDto) {
     const key = `auth_code:${params.code}`;
-    const context = await this.cacheManager.get<AuthorizationCodePayload>(key);
-
+    const payload = await this.redis.get(key);
+    const context = payload ? (JSON.parse(payload) as AuthorizationCodePayload) : null;
     if (!context) {
       throw new UnauthorizedException('Invalid or expired authorization code');
     }
-
     if (context.clientId !== params.clientId || context.redirectUri !== params.redirectUri) {
       throw new UnauthorizedException('Invalid client');
     }
-
-    await this.cacheManager.del(key);
-
+    await this.redis.del(key);
     return await this.tokenService.generateTokenPair({
       sub: context.userId,
       clientId: context.clientId,
       scope: context.scope,
+      externalKey: context.externalKey,
+      name: context.fullName,
     });
   }
 
-  async resolvePostLoginRedirect(params: LoginParamsDto) {
+  async resumeAuthorizeFlow(params: LoginParamsDto) {
     const { authRequestId } = params;
     const loginUrl = this.configService.getOrThrow<string>('IDENTITY_HUB_APPS_PATH');
     if (authRequestId) {
@@ -117,50 +124,23 @@ export class OAuthService {
     if (authRequestId) {
       url.searchParams.set('auth_request_id', authRequestId);
     }
-    console.log(url);
     return url.toString();
-  }
-
-  private async createSession(user: User): Promise<string> {
-    const sessionId = crypto.randomUUID();
-    const key = `session:${sessionId}`;
-    const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
-    const payload: SessionPayload = {
-      userId: user.id,
-      fullName: user.fullName,
-    };
-    await this.cacheManager.set(key, payload, LABORAL_HOURS_MS);
-    return sessionId;
-  }
-
-  private async getSession(sessionId: string) {
-    const key = `session:${sessionId}`;
-    const session = await this.cacheManager.get<SessionPayload>(key);
-    return session ?? null;
-  }
-
-  private async generateAuthorizationCode(context: AuthorizationCodePayload) {
-    // code for exchange tokens
-    const code = crypto.randomUUID();
-    const key = `auth_code:${code}`;
-    await this.cacheManager.set(key, context, 5 * 60 * 1000);
-    return code;
   }
 
   private async createPendingOAuthRequest(data: AuthorizeParamsDto) {
     // save all query params for login redirect
     const oAuthRequestId = crypto.randomUUID();
     const key = `pending_oauth:${oAuthRequestId}`;
-    await this.cacheManager.set(key, data, 5 * 60 * 1000);
+    await this.redis.set(key, JSON.stringify(data), 'EX', 5 * 60 * 1000);
     return oAuthRequestId;
   }
 
   private async consumePendingOAuthRequest(oAuthRequestId: string) {
     const key = `pending_oauth:${oAuthRequestId}`;
-    const data = await this.cacheManager.get<AuthorizeParamsDto>(key);
+    const data = await this.redis.get(key);
     if (!data) return null;
-    await this.cacheManager.del(key);
-    return data;
+    await this.redis.del(key);
+    return JSON.parse(data) as AuthorizeParamsDto;
   }
 
   private async validateApplication(clientId: string, redirectUri: string) {
@@ -169,7 +149,7 @@ export class OAuthService {
     });
 
     if (!application) {
-      throw new UnauthorizedException('Invalid client id.');
+      throw new UnauthorizedException('Invalid client.');
     }
 
     if (!application.redirectUris.includes(redirectUri)) {
@@ -186,14 +166,31 @@ export class OAuthService {
     return loginUrl.toString();
   }
 
-  private async redirectWithAuthorizationCode(session: SessionPayload, params: AuthorizeParamsDto) {
-    const code = await this.generateAuthorizationCode({
-      userId: session.userId,
-      clientId: params.clientId,
-      redirectUri: params.redirectUri,
-    });
+  private async redirectWithAuthorizationCode(session: AuthorizationCodePayload, params: AuthorizeParamsDto) {
+    const code = crypto.randomUUID();
+    const key = `auth_code:${code}`;
+    await this.redis.set(key, JSON.stringify(session), 'EX', 5 * 60 * 1000);
     const redirectUri = new URL(params.redirectUri);
     redirectUri.searchParams.set('code', code);
     return redirectUri.toString();
+  }
+
+  private async createSession(user: User): Promise<string> {
+    const sessionId = crypto.randomUUID();
+    const key = `session:${sessionId}`;
+    const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
+    const payload: SessionPayload = {
+      userId: user.id,
+      fullName: user.fullName,
+      externalKey: user.externalKey,
+    };
+    await this.redis.set(key, JSON.stringify(payload), 'EX', LABORAL_HOURS_MS);
+    return sessionId;
+  }
+
+  private async getSession(sessionId: string) {
+    const key = `session:${sessionId}`;
+    const session = await this.redis.get(key);
+    return session ? (JSON.parse(session) as SessionPayload) : null;
   }
 }

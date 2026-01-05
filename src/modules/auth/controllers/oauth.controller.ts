@@ -18,7 +18,7 @@ export class OAuthController {
     @Cookies('session_id') sessionId: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const url = await this.oAuthService.resolveAuthorizeRedirectUrl(query, sessionId);
+    const url = await this.oAuthService.handleAuthorizeRequest(query, sessionId);
     return res.redirect(url);
   }
 
@@ -34,7 +34,7 @@ export class OAuthController {
         maxAge: 24 * 60 * 60 * 1000,
       });
 
-      const redirectUrl = await this.oAuthService.resolvePostLoginRedirect(queryParams);
+      const redirectUrl = await this.oAuthService.resumeAuthorizeFlow(queryParams);
       return res.redirect(redirectUrl);
     } catch (error: unknown) {
       if (error instanceof AuthException) {

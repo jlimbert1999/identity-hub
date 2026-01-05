@@ -1,18 +1,20 @@
-import { Inject, Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
-import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { InjectRedis } from '@nestjs-modules/ioredis';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 
-import { User } from 'src/modules/users/entities';
-import { LoginDto } from '../dtos';
 import { AuthException, AuthErrorCode } from '../exceptions/auth.exception';
 import { UserApplication } from 'src/modules/access/entities';
+import { User } from 'src/modules/users/entities';
 import { SessionPayload } from '../interfaces';
+import { LoginDto } from '../dtos';
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @InjectRedis() private readonly redis: Redis,
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(UserApplication) private userAppRepository: Repository<UserApplication>,
   ) {}
@@ -41,10 +43,12 @@ export class AuthService {
   }
 
   async validateSession(sessionId: string) {
-    const session = await this.cacheManager.get<SessionPayload>(`session:${sessionId}`);
-    if (!session) {
+    const payload = await this.redis.get(`session:${sessionId}`);
+    if (!payload) {
       throw new UnauthorizedException('Session not found');
     }
+    const session = JSON.parse(payload) as SessionPayload;
+
     const user = await this.userRepository.findOneBy({ id: session.userId });
 
     if (!user) {
@@ -63,7 +67,7 @@ export class AuthService {
 
   async removeSession(sessionId: string | undefined) {
     if (!sessionId) throw new BadRequestException('Invalid session id');
-    const isDeleted = await this.cacheManager.del(`session:${sessionId}`);
+    const isDeleted = await this.redis.del(`session:${sessionId}`);
     return {
       ok: true,
       message: isDeleted ? 'Logout successful' : 'Session is already logged out',
