@@ -21,10 +21,8 @@ export class EnvironmentVariables {
   DATABASE_PASSWORD: string;
 
   @IsString()
-  CACHE_STORE_HOST: string;
-
-  @IsNumber()
-  CACHE_STORE_PORT: number;
+  @IsNotEmpty()
+  REDIS_URL: string;
 
   @IsString()
   @IsNotEmpty()
@@ -32,11 +30,11 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  ROUTES_APPS: string;
+  IDENTITY_HUB_APPS_PATH: string;
 
   @IsString()
   @IsNotEmpty()
-  ROUTES_LOGIN: string;
+  IDENTITY_HUB_LOGIN_PATH: string;
 }
 
 export function validate(config: Record<string, unknown>) {

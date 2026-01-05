@@ -21,10 +21,7 @@ export class AccessController {
   }
 
   @Put('/:userId')
-  update(
-    @Param('userId') userId: string,
-    @Body() body: UpdateUserWithAccessDto,
-  ) {
+  update(@Param('userId') userId: string, @Body() body: UpdateUserWithAccessDto) {
     return this.assigmentService.updateUserWithApplications(userId, body);
   }
 }

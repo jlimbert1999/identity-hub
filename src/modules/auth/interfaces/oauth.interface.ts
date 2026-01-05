@@ -4,8 +4,9 @@ export interface PendingAuthRequest {
   state: string;
 }
 
-export interface AuthorizationContext {
+export interface AuthorizationCodePayload {
   userId: string;
   clientId: string;
   redirectUri: string;
+  scope?: string;
 }

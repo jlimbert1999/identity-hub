@@ -1,13 +1,8 @@
-export class GenerateTokenProperties {
+export class AccessTokenPayload {
   sub: string;
-  externalKey: string;
-  clientKey: string;
+  clientId: string;
+  scope?: string;
 }
-export class RefreshTokenPayload {
-  sub: string;
-  clientKey: string;
-}
-
-export class AuthAccessTokenPayload {
-  sub: string;
+export interface RefreshTokenCache extends AccessTokenPayload {
+  active: boolean;
 }

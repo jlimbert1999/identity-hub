@@ -1,23 +1,15 @@
-import {
-  Body,
-  Get,
-  Post,
-  Query,
-  Param,
-  Patch,
-  Controller,
-} from '@nestjs/common';
+import { Body, Get, Post, Query, Param, Patch, Controller } from '@nestjs/common';
 
 import { PaginationParamsDto } from 'src/modules/common';
 import { ApplicationService } from '../services';
-import { CreateClientDto, UpdateClientDto } from '../dtos';
+import { CreateApplicationDto, UpdateClientDto } from '../dtos';
 
 @Controller('clients')
 export class ClientController {
   constructor(private readonly clientService: ApplicationService) {}
 
   @Post()
-  create(@Body() createClientDto: CreateClientDto) {
+  create(@Body() createClientDto: CreateApplicationDto) {
     return this.clientService.create(createClientDto);
   }
 

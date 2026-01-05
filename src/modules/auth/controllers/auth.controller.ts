@@ -19,10 +19,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(
-    @Cookies('session_id') sessionId: string | undefined,
-    @Res({ passthrough: true }) response: Response,
-  ) {
+  async logout(@Cookies('session_id') sessionId: string | undefined, @Res({ passthrough: true }) response: Response) {
     const result = await this.authService.removeSession(sessionId);
     response.clearCookie('session_id', {
       httpOnly: true,

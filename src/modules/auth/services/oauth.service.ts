@@ -1,250 +1,134 @@
-import {
-  Inject,
-  Injectable,
-  BadRequestException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
-import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
-import {
-  AuthDto,
-  LoginParamsDto,
-  RefreshTokenDto,
-  TokenRequestDto,
-  AuthorizeParamsDto,
-} from '../dtos';
-import {
-  PendingAuthRequest,
-  RefreshTokenPayload,
-  AuthorizationContext,
-  GenerateTokenProperties,
-  SessionPayload,
-} from '../interfaces';
-import { AuthErrorCode, AuthException } from '../exceptions/auth.exception';
+import { SessionPayload, AuthorizationCodePayload } from '../interfaces';
+import { LoginParamsDto, TokenRequestDto, AuthorizeParamsDto, LoginDto, GrantType } from '../dtos';
+import { AuthException } from '../exceptions/auth.exception';
 import { User } from 'src/modules/users/entities';
-import { ConfigService } from '@nestjs/config';
+
 import { EnvironmentVariables } from 'src/config';
+import { Application } from 'src/modules/access/entities';
+import { AuthService } from './auth.service';
+import { TokenService } from './token.service';
 
 @Injectable()
 export class OAuthService {
   constructor(
-    @InjectRepository(User) private userRepository: Repository<User>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @InjectRepository(Application) private appRepository: Repository<Application>,
+    // @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private configService: ConfigService<EnvironmentVariables>,
-    private jwtService: JwtService,
+    private tokenService: TokenService,
+    private authService: AuthService,
   ) {}
 
-  async login({ login, password }: AuthDto): Promise<User> {
-    const userDB = await this.userRepository
-      .createQueryBuilder('user')
-      .where('user.login = :login', { login })
-      .addSelect('user.password')
-      .getOne();
+  async resolveAuthorizeRedirectUrl(params: AuthorizeParamsDto, sessionId?: string) {
+    const application = await this.validateApplication(params.clientId, params.redirectUri);
 
-    if (!userDB) {
-      throw new AuthException(AuthErrorCode.INVALID_CREDENTIALS);
+    const session = sessionId ? await this.getSession(sessionId) : null;
+
+    if (!session) {
+      return await this.redirectToLoginWithPendingRequest(params);
     }
 
-    const isValid = bcrypt.compareSync(password, userDB.password);
-    if (!isValid) {
-      throw new AuthException(AuthErrorCode.INVALID_CREDENTIALS);
+    await this.authService.checkUserAppAccess(session.userId, application.id);
+
+    return this.redirectWithAuthorizationCode(session, params);
+  }
+
+  async login(dto: LoginDto) {
+    const user = await this.authService.authenticateUser(dto);
+    return await this.createSession(user);
+  }
+
+  async processTokenRequest(dto: TokenRequestDto) {
+    const app = await this.appRepository.findOne({ where: { clientId: dto.clientId, isActive: true } });
+    if (!app) throw new UnauthorizedException('Invalid client id.');
+
+    if (app.isConfidential) {
+      if (!dto.clientSecret) throw new UnauthorizedException('Client secret is required.');
+      const isSecretValid = await bcrypt.compare(dto.clientSecret, app.clientSecret);
+      if (!isSecretValid) {
+        throw new UnauthorizedException('Invalid client secret.');
+      }
     }
 
-    if (!userDB.isActive) {
-      throw new AuthException(AuthErrorCode.USER_DISABLED);
+    if (dto.grantType === GrantType.AUTHORIZATION_CODE) {
+      return await this.exchangeAuthorizationCode(dto);
     }
 
-    return userDB;
+    return await this.tokenService.rotateRefreshToken(dto.refreshToken, dto.clientId);
   }
 
-  async consumeAuthCode(code: string, clientId: string) {
-    const payload: { userId: string; clientId: string } | undefined =
-      await this.cacheManager.get(`authcode:${code}`);
-
-    if (!payload) {
-      throw new BadRequestException('Authorization code inválido o expirado');
-    }
-
-    if (payload.clientId !== clientId) {
-      throw new UnauthorizedException('ClientId inválido para este code');
-    }
-
-    await this.cacheManager.del(`authcode:${code}`);
-
-    return payload;
-  }
-
-  async refreshToken(dto: RefreshTokenDto) {
-    const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
-      dto.refreshToken,
-    );
-
-    const user = await this.userRepository.findOne({
-      where: { id: payload.sub },
-      relations: { accesses: true },
-    });
-
-    if (!user) throw new UnauthorizedException();
-
-    return this.generateAuthTokens({
-      sub: user.id,
-      externalKey: user.externalKey,
-      clientKey: payload.clientKey,
-    });
-  }
-
-  private async generateAuthTokens(properties: GenerateTokenProperties) {
-    const { sub, externalKey, clientKey } = properties;
-    const accessToken = await this.jwtService.signAsync(
-      { sub, externalKey, clientKey },
-      { expiresIn: '1m' },
-    );
-
-    const refreshToken = await this.jwtService.signAsync(
-      { sub, clientKey },
-      { expiresIn: '1d' },
-    );
-
-    return { accessToken, refreshToken };
-  }
-
-  // 2️⃣ Obtener userId desde una sesión
-  async getUserFromSession(sessionId: string) {
-    return await this.cacheManager.get<string>(`session:${sessionId}`);
-  }
-
-  async getOAuthRequest(oAuthRequestId: string) {
-    const key = `pending_oauth:${oAuthRequestId}`;
-    const data = await this.cacheManager.get<PendingAuthRequest>(key);
-    return data ?? null;
-  }
-
-  async clearOAuthRequest(oauthLoginId: string): Promise<void> {
-    const key = `pending_oauth:${oauthLoginId}`;
-    await this.cacheManager.del(key);
-  }
-
-  async exchangeAuthorizationCode(params: TokenRequestDto) {
-    const key = `authorization_context:${params.code}`;
-
-    const context = await this.cacheManager.get<AuthorizationContext>(key);
+  private async exchangeAuthorizationCode(params: TokenRequestDto) {
+    const key = `auth_code:${params.code}`;
+    const context = await this.cacheManager.get<AuthorizationCodePayload>(key);
 
     if (!context) {
       throw new UnauthorizedException('Invalid or expired authorization code');
     }
 
-    if (context.clientId !== params.client_id) {
+    if (context.clientId !== params.clientId || context.redirectUri !== params.redirectUri) {
       throw new UnauthorizedException('Invalid client');
-    }
-
-    if (context.redirectUri !== params.redirect_uri) {
-      throw new UnauthorizedException('Invalid redirect_uri');
     }
 
     await this.cacheManager.del(key);
 
-    return await this.generateTokens({
-      userId: context.userId,
+    return await this.tokenService.generateTokenPair({
+      sub: context.userId,
       clientId: context.clientId,
+      scope: context.scope,
     });
   }
 
-  async generateTokens(payload: { userId: string; clientId: string }) {
-    const access_token = await this.jwtService.signAsync(
-      {
-        sub: payload.userId,
-        client: payload.clientId,
-      },
-      { expiresIn: '1m' },
-    );
+  async resolvePostLoginRedirect(params: LoginParamsDto) {
+    const { authRequestId } = params;
+    const loginUrl = this.configService.getOrThrow<string>('IDENTITY_HUB_APPS_PATH');
+    if (authRequestId) {
+      const pendingReq = await this.consumePendingOAuthRequest(authRequestId);
 
-    const refresh_token = await this.jwtService.signAsync(
-      {
-        sub: payload.userId,
-        client: payload.clientId,
-        type: 'refresh',
-      },
-      { expiresIn: '1d' },
-    );
+      if (!pendingReq) return loginUrl;
 
-    return { access_token, refresh_token };
-  }
+      const authorizeUrl = new URL('/oauth/authorize');
+      authorizeUrl.searchParams.set('client_id', pendingReq.clientId);
+      authorizeUrl.searchParams.set('redirect_uri', pendingReq.redirectUri);
+      authorizeUrl.searchParams.set('response_type', 'code');
+      if (pendingReq.scope) {
+        authorizeUrl.searchParams.set('scope', pendingReq.scope);
+      }
 
-  async resolveLoginSuccessRedirect(user: User, params: LoginParamsDto) {
-    const { auth_request_id } = params;
+      if (pendingReq.state) {
+        authorizeUrl.searchParams.set('state', pendingReq.state);
+      }
+      return authorizeUrl.toString();
+    }
 
-    if (!auth_request_id) return 'http://localhost:4200/apps';
-
-    const oauthRequest = await this.getOAuthRequest(auth_request_id);
-
-    if (!oauthRequest) return 'http://localhost:4200/apps';
-
-    await this.clearOAuthRequest(auth_request_id);
-
-    const code = await this.createAuthCode({
-      userId: user.id,
-      clientId: oauthRequest.client_id,
-      redirectUri: oauthRequest.redirect_uri,
-    });
-
-    const url = new URL(oauthRequest.redirect_uri);
-
-    url.searchParams.set('code', code);
-
-    if (oauthRequest.state) url.searchParams.set('state', oauthRequest.state);
-
-    return url.toString();
+    return loginUrl;
   }
 
   resolveLoginErrorRedirect(error: AuthException, params: LoginParamsDto) {
-    const { auth_request_id } = params;
-
-    const url = new URL('http://localhost:4200/login');
-
+    const { authRequestId } = params;
+    const url = new URL(this.configService.getOrThrow<string>('IDENTITY_HUB_LOGIN_PATH'));
     url.searchParams.set('error', error.code);
-
-    if (auth_request_id) {
-      url.searchParams.set('auth_request_id', auth_request_id);
+    if (authRequestId) {
+      url.searchParams.set('auth_request_id', authRequestId);
     }
-
+    console.log(url);
     return url.toString();
   }
 
-  async handleAuthorize(query: AuthorizeParamsDto, sessionId?: string) {
-    const { clientId, redirectUri, state } = query;
-
-    const session = sessionId ? await this.getSession(sessionId) : null;
-
-    if (!session) {
-      const oAuthRequestId = await this.createPendingOAuthRequest({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        state,
-      });
-
-      const loginUrl = new URL(
-        `${this.configService.getOrThrow('ROUTES_APPS')}`,
-      );
-      loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
-      return loginUrl.toString();
-    }
-
-    const { userId } = session;
-    const code = await this.createAuthCode({ userId, clientId, redirectUri });
-    const resultUrl = new URL(redirectUri);
-    resultUrl.searchParams.set('code', code);
-    return resultUrl.toString();
-  }
-
-  private async createSession(payload: SessionPayload): Promise<string> {
+  private async createSession(user: User): Promise<string> {
     const sessionId = crypto.randomUUID();
     const key = `session:${sessionId}`;
     const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
+    const payload: SessionPayload = {
+      userId: user.id,
+      fullName: user.fullName,
+    };
     await this.cacheManager.set(key, payload, LABORAL_HOURS_MS);
     return sessionId;
   }
@@ -255,17 +139,61 @@ export class OAuthService {
     return session ?? null;
   }
 
-  private async createAuthCode(context: AuthorizationContext) {
+  private async generateAuthorizationCode(context: AuthorizationCodePayload) {
+    // code for exchange tokens
     const code = crypto.randomUUID();
-    const key = `authorization_context:${code}`;
+    const key = `auth_code:${code}`;
     await this.cacheManager.set(key, context, 5 * 60 * 1000);
     return code;
   }
 
-  private async createPendingOAuthRequest(data: PendingAuthRequest) {
+  private async createPendingOAuthRequest(data: AuthorizeParamsDto) {
+    // save all query params for login redirect
     const oAuthRequestId = crypto.randomUUID();
     const key = `pending_oauth:${oAuthRequestId}`;
     await this.cacheManager.set(key, data, 5 * 60 * 1000);
     return oAuthRequestId;
+  }
+
+  private async consumePendingOAuthRequest(oAuthRequestId: string) {
+    const key = `pending_oauth:${oAuthRequestId}`;
+    const data = await this.cacheManager.get<AuthorizeParamsDto>(key);
+    if (!data) return null;
+    await this.cacheManager.del(key);
+    return data;
+  }
+
+  private async validateApplication(clientId: string, redirectUri: string) {
+    const application = await this.appRepository.findOne({
+      where: { clientId, isActive: true },
+    });
+
+    if (!application) {
+      throw new UnauthorizedException('Invalid client id.');
+    }
+
+    if (!application.redirectUris.includes(redirectUri)) {
+      throw new UnauthorizedException('Invalid redirect uri.');
+    }
+
+    return application;
+  }
+
+  private async redirectToLoginWithPendingRequest(params: AuthorizeParamsDto) {
+    const oAuthRequestId = await this.createPendingOAuthRequest(params);
+    const loginUrl = new URL(this.configService.getOrThrow('IDENTITY_HUB_LOGIN_PATH'));
+    loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
+    return loginUrl.toString();
+  }
+
+  private async redirectWithAuthorizationCode(session: SessionPayload, params: AuthorizeParamsDto) {
+    const code = await this.generateAuthorizationCode({
+      userId: session.userId,
+      clientId: params.clientId,
+      redirectUri: params.redirectUri,
+    });
+    const redirectUri = new URL(params.redirectUri);
+    redirectUri.searchParams.set('code', code);
+    return redirectUri.toString();
   }
 }

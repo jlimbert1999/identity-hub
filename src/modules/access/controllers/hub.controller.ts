@@ -5,7 +5,6 @@ import { GetUserRequest } from 'src/modules/auth/decorators/get-user-request.dec
 import { User } from 'src/modules/users/entities';
 
 @Controller('hubs')
-@UseGuards(SessionGuard)
 export class HubController {
   constructor(private hubService: HubService) {}
 

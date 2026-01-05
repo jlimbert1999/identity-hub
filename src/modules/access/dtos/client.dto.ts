@@ -1,10 +1,10 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class CreateClientDto {
+export class CreateApplicationDto {
   @IsString()
   @IsNotEmpty()
-  clientKey: string;
+  clientId: string;
 
   @IsString()
   @IsNotEmpty()
@@ -16,11 +16,21 @@ export class CreateClientDto {
 
   @IsString()
   @IsNotEmpty()
-  baseUrl: string;
+  launchUrl: string;
 
   @IsString()
   @IsNotEmpty()
   defaultRole: string;
+
+  @IsBoolean()
+  isConfidential: boolean;
+
+  @IsString({ each: true })
+  @IsArray()
+  redirectUris: string[];
+
+  @IsBoolean()
+  isActive: boolean;
 }
 
-export class UpdateClientDto extends PartialType(CreateClientDto) {}
+export class UpdateClientDto extends PartialType(CreateApplicationDto) {}

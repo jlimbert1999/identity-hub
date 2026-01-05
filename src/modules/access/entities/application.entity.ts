@@ -1,10 +1,4 @@
-import {
-  Column,
-  Entity,
-  OneToMany,
-  CreateDateColumn,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, OneToMany, CreateDateColumn, PrimaryGeneratedColumn } from 'typeorm';
 import { UserApplication } from './user-application.entity';
 
 @Entity('applications')
@@ -13,7 +7,7 @@ export class Application {
   id: number;
 
   @Column({ unique: true })
-  clientKey: string;
+  clientId: string;
 
   @Column({ length: 150 })
   name: string;
@@ -21,8 +15,17 @@ export class Application {
   @Column({ nullable: true })
   description?: string;
 
-  @Column({ length: 255, nullable: true })
-  baseUrl?: string;
+  @Column()
+  launchUrl: string;
+
+  @Column()
+  clientSecret: string; // bcrypt hash
+
+  @Column({ default: true })
+  isConfidential: boolean;
+
+  @Column('text', { array: true })
+  redirectUris: string[];
 
   @Column({ nullable: true })
   defaultRole: string;

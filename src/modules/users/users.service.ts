@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  NotFoundException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { EntityManager, ILike, Repository } from 'typeorm';
@@ -15,9 +11,7 @@ import { User } from './entities';
 
 @Injectable()
 export class UsersService {
-  constructor(
-    @InjectRepository(User) private userRepository: Repository<User>,
-  ) {}
+  constructor(@InjectRepository(User) private userRepository: Repository<User>) {}
 
   async findAll(paginationDto: PaginationParamsDto) {
     const { limit, offset, term } = paginationDto;
@@ -37,9 +31,7 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto, manager?: EntityManager) {
-    const repository = manager
-      ? manager.getRepository(User)
-      : this.userRepository;
+    const repository = manager ? manager.getRepository(User) : this.userRepository;
 
     const duplicate = await repository.findOne({ where: { login: dto.login } });
     if (duplicate) {
@@ -59,9 +51,7 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, manager?: EntityManager) {
-    const repository = manager
-      ? manager.getRepository(User)
-      : this.userRepository;
+    const repository = manager ? manager.getRepository(User) : this.userRepository;
 
     const userDB = await repository.findOneBy({ id });
 

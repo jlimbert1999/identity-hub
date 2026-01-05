@@ -12,6 +12,10 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 
 import { EnvironmentVariables, validate } from './config';
+import Redis from 'ioredis';
+import { RedisModule } from '@nestjs-modules/ioredis';
+
+export const REDIS_CLIENT_KEY = 'REDIS_MICROSERVICE';
 
 @Module({
   imports: [
@@ -33,19 +37,16 @@ import { EnvironmentVariables, validate } from './config';
       }),
       inject: [ConfigService],
     }),
-    CacheModule.registerAsync({
-      isGlobal: true,
-      useFactory: (configService: ConfigService<EnvironmentVariables>) => {
-        return {
-          stores: [
-            new KeyvRedis(
-              `redis://${configService.get('CACHE_STORE_HOST')}:${configService.get('CACHE_STORE_PORT')}`,
-            ),
-          ],
-        };
-      },
+    CacheModule.register({ isGlobal: true }),
+
+    RedisModule.forRootAsync({
+      useFactory: (configService: ConfigService<EnvironmentVariables>) => ({
+        type: 'single',
+        url: configService.getOrThrow<string>('REDIS_URL'),
+      }),
       inject: [ConfigService],
     }),
+
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
       // exclude: ['/login', '/oauth/*', '/auth/*'],

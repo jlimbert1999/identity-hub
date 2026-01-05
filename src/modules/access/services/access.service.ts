@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  HttpException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, HttpException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 
@@ -74,12 +69,10 @@ export class AccessService {
         );
       }
 
-      const updatedUser = await queryRunner.manager
-        .getRepository(User)
-        .findOne({
-          where: { id: user.id },
-          relations: { accesses: { application: true } },
-        });
+      const updatedUser = await queryRunner.manager.getRepository(User).findOne({
+        where: { id: user.id },
+        relations: { accesses: { application: true } },
+      });
 
       await queryRunner.commitTransaction();
       return updatedUser;
@@ -92,17 +85,10 @@ export class AccessService {
     }
   }
 
-  private async syncUserApplications(
-    dto: { userId: string; applicationIds: number[] },
-    manager?: EntityManager,
-  ) {
-    const userAppRepo = manager
-      ? manager.getRepository(UserApplication)
-      : this.userAppRepository;
+  private async syncUserApplications(dto: { userId: string; applicationIds: number[] }, manager?: EntityManager) {
+    const userAppRepo = manager ? manager.getRepository(UserApplication) : this.userAppRepository;
 
-    const appRepo = manager
-      ? manager.getRepository(Application)
-      : this.appRepository;
+    const appRepo = manager ? manager.getRepository(Application) : this.appRepository;
 
     const { userId, applicationIds } = dto;
 

@@ -1,13 +1,12 @@
-import {
-  Injectable,
-  NotFoundException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { ILike, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 
 import { PaginationParamsDto } from 'src/modules/common';
-import { CreateClientDto, UpdateClientDto } from '../dtos';
+import { CreateApplicationDto, UpdateClientDto } from '../dtos';
 import { Application } from '../entities';
 
 @Injectable()
@@ -17,9 +16,11 @@ export class ApplicationService {
     private clientRepository: Repository<Application>,
   ) {}
 
-  async create(clientDto: CreateClientDto) {
+  async create(clientDto: CreateApplicationDto) {
     try {
-      const client = this.clientRepository.create(clientDto);
+      const rawSecret = randomBytes(32).toString('hex');
+      const hashedSecret = await bcrypt.hash(rawSecret, 10);
+      const client = this.clientRepository.create({ ...clientDto, clientSecret: hashedSecret });
       return await this.clientRepository.save(client);
     } catch (error: unknown) {
       console.log(error);

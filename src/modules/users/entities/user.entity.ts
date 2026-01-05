@@ -1,12 +1,5 @@
 import { UserApplication } from 'src/modules/access/entities';
-import {
-  Column,
-  Entity,
-  OneToMany,
-  UpdateDateColumn,
-  CreateDateColumn,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, OneToMany, UpdateDateColumn, CreateDateColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 export enum UserRole {
   USER = 'USER',
