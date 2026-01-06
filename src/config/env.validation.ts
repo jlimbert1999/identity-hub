@@ -26,15 +26,19 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  JWT_KEY: string;
-
-  @IsString()
-  @IsNotEmpty()
   IDENTITY_HUB_APPS_PATH: string;
 
   @IsString()
   @IsNotEmpty()
   IDENTITY_HUB_LOGIN_PATH: string;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_PRIVATE_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_PUBLIC_KEY;
 }
 
 export function validate(config: Record<string, unknown>) {

@@ -8,8 +8,8 @@ import Redis from 'ioredis';
 
 import { AuthException, AuthErrorCode } from '../exceptions/auth.exception';
 import { UserApplication } from 'src/modules/access/entities';
-import { User } from 'src/modules/users/entities';
 import { AuthSessionPayload } from '../interfaces';
+import { User } from 'src/modules/users/entities';
 import { LoginDto } from '../dtos';
 @Injectable()
 export class AuthService {
@@ -65,7 +65,21 @@ export class AuthService {
     };
   }
 
-  async removeSession(sessionId: string | undefined) {
+  async createAuthSession(user: User) {
+    const sessionId = crypto.randomUUID();
+    const LABORAL_HOURS_MS = 10 * 60 * 60;
+    const payload: AuthSessionPayload = { userId: user.id, fullName: user.fullName };
+    await this.redis.set(`session:${sessionId}`, JSON.stringify(payload), 'EX', LABORAL_HOURS_MS);
+    return sessionId;
+  }
+
+  async getAuthSession(sessionId: string) {
+    const key = `session:${sessionId}`;
+    const session = await this.redis.get(key);
+    return session ? (JSON.parse(session) as AuthSessionPayload) : null;
+  }
+
+  async removeAuthSession(sessionId: string | undefined) {
     if (!sessionId) throw new BadRequestException('Invalid session id');
     const isDeleted = await this.redis.del(`session:${sessionId}`);
     return {

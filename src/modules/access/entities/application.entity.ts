@@ -28,7 +28,7 @@ export class Application {
   redirectUris: string[];
 
   @Column({ nullable: true })
-  defaultRole: string;
+  clientProfile: string;
 
   @Column({ default: true })
   isActive: boolean;

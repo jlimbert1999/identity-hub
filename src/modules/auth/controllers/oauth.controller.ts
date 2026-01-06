@@ -11,8 +11,8 @@ import { OAuthService } from '../services';
 export class OAuthController {
   constructor(private readonly oAuthService: OAuthService) {}
 
-  @Get('authorize')
   @Public()
+  @Get('authorize')
   async authorize(
     @Query() query: AuthorizeParamsDto,
     @Cookies('session_id') sessionId: string | undefined,
@@ -22,11 +22,11 @@ export class OAuthController {
     return res.redirect(url);
   }
 
-  @Post('login')
   @Public()
+  @Post('login')
   async login(@Body() body: LoginDto, @Query() queryParams: LoginParamsDto, @Res({ passthrough: true }) res: Response) {
     try {
-      const sessionId = await this.oAuthService.login(body);
+      const sessionId = await this.oAuthService.handleLoginRequest(body);
       res.cookie('session_id', sessionId, {
         httpOnly: true,
         sameSite: 'lax',
@@ -45,9 +45,9 @@ export class OAuthController {
     }
   }
 
-  @Post('token')
   @Public()
+  @Post('token')
   token(@Body() body: TokenRequestDto) {
-    return this.oAuthService.processTokenRequest(body);
+    return this.oAuthService.handleTokenRequest(body);
   }
 }

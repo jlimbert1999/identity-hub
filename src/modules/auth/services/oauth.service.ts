@@ -8,79 +8,59 @@ import * as bcrypt from 'bcrypt';
 import Redis from 'ioredis';
 
 import { LoginParamsDto, TokenRequestDto, AuthorizeParamsDto, LoginDto, GrantType } from '../dtos';
-import { AuthSessionPayload, AuthorizationCodePayload } from '../interfaces';
 import { AuthException } from '../exceptions/auth.exception';
-import { User } from 'src/modules/users/entities';
-
 import { Application } from 'src/modules/access/entities';
+import { AuthorizationCodePayload } from '../interfaces';
+import { User } from 'src/modules/users/entities';
 import { EnvironmentVariables } from 'src/config';
-import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class OAuthService {
   constructor(
     @InjectRepository(Application) private appRepository: Repository<Application>,
-    @InjectRedis() private readonly redis: Redis,
+    @InjectRepository(User) private userRepository: Repository<User>,
+    @InjectRedis() private redis: Redis,
     private configService: ConfigService<EnvironmentVariables>,
     private tokenService: TokenService,
     private authService: AuthService,
   ) {}
 
   async handleAuthorizeRequest(params: AuthorizeParamsDto, sessionId?: string) {
-    const application = await this.validateApplication(params.clientId, params.redirectUri);
-    const session = sessionId ? await this.getSession(sessionId) : null;
+    const app = await this.appRepository.findOne({ where: { clientId: params.clientId, isActive: true } });
+    if (!app) throw new UnauthorizedException('Invalid client.');
+    if (!app.redirectUris.includes(params.redirectUri)) throw new UnauthorizedException('Invalid redirect uri.');
+
+    const session = sessionId ? await this.authService.getAuthSession(sessionId) : null;
     if (!session) {
-      return await this.redirectToLoginWithPendingRequest(params);
+      const oAuthRequestId = await this.createPendingOAuthRequest(params);
+      const loginUrl = new URL(this.configService.getOrThrow('IDENTITY_HUB_LOGIN_PATH'));
+      loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
+      return loginUrl.toString();
     }
-    await this.authService.checkUserAppAccess(session.userId, application.id);
+
+    await this.authService.checkUserAppAccess(session.userId, app.id);
+
     const code = await this.createAuthCode(session.userId, params);
+
     const resultUrl = new URL(params.redirectUri);
+
     resultUrl.searchParams.set('code', code);
+
     return resultUrl.toString();
   }
 
-  async login(dto: LoginDto) {
-    const user = await this.authService.authenticateUser(dto);
-    return await this.createSession(user);
+  async handleLoginRequest(dto: LoginDto) {
+    const user = await this.authService.authenticateUser(dto); // Login user;
+    return await this.authService.createAuthSession(user); // Create session and returbn key;
   }
 
-  async processTokenRequest(dto: TokenRequestDto) {
-    const app = await this.appRepository.findOne({ where: { clientId: dto.clientId, isActive: true } });
-    if (!app) throw new UnauthorizedException('Invalid client id.');
-
-    if (app.isConfidential) {
-      if (!dto.clientSecret) throw new UnauthorizedException('Client secret is required.');
-      const isSecretValid = await bcrypt.compare(dto.clientSecret, app.clientSecret);
-      if (!isSecretValid) {
-        throw new UnauthorizedException('Invalid client secret.');
-      }
-    }
-
-    if (dto.grantType === GrantType.AUTHORIZATION_CODE) {
-      const result = await this.exchangeAuthorizationCode(dto);
-      return { ...result, context: { defaultRole: app.defaultRole } };
-    }
-
-    return await this.tokenService.rotateRefreshToken(dto.refreshToken, dto.clientId);
-  }
-
-  private async exchangeAuthorizationCode(params: TokenRequestDto) {
-    const key = `auth_code:${params.code}`;
-    const payload = await this.redis.get(key);
-    const context = payload ? (JSON.parse(payload) as AuthorizationCodePayload) : null;
-    if (!context) {
-      throw new UnauthorizedException('Invalid or expired authorization code');
-    }
-    if (context.clientId !== params.clientId || context.redirectUri !== params.redirectUri) {
-      throw new UnauthorizedException('Invalid client');
-    }
-    await this.redis.del(key);
-    return await this.tokenService.generateTokenPair({
-      sub: context.userId,
-      clientId: context.clientId,
-      scope: context.scope,
-    });
+  async handleTokenRequest(dto: TokenRequestDto) {
+    const app = await this.loadValidApplication(dto.clientId, dto.clientSecret);
+    return dto.grantType === GrantType.AUTHORIZATION_CODE
+      ? this.handleAuthorizationCodeGrant(dto, app)
+      : this.handleRefreshTokenGrant(dto, app);
   }
 
   async resumeAuthorizeFlow({ authRequestId }: LoginParamsDto) {
@@ -90,18 +70,21 @@ export class OAuthService {
     const pendingReq = await this.consumePendingOAuthRequest(authRequestId);
     if (!pendingReq) return loginUrl;
 
-    const authorizeUrl = new URL('/oauth/authorize');
-    authorizeUrl.searchParams.set('client_id', pendingReq.clientId);
-    authorizeUrl.searchParams.set('redirect_uri', pendingReq.redirectUri);
-    authorizeUrl.searchParams.set('response_type', 'code');
+    const params = new URLSearchParams({
+      client_id: pendingReq.clientId,
+      redirect_uri: pendingReq.redirectUri,
+      response_type: 'code',
+    });
+
     if (pendingReq.scope) {
-      authorizeUrl.searchParams.set('scope', pendingReq.scope);
+      params.set('scope', pendingReq.scope);
     }
 
     if (pendingReq.state) {
-      authorizeUrl.searchParams.set('state', pendingReq.state);
+      params.set('state', pendingReq.state);
     }
-    return authorizeUrl.toString();
+
+    return `/oauth/authorize?${params.toString()}`;
   }
 
   resolveLoginErrorRedirect(error: AuthException, params: LoginParamsDto) {
@@ -114,43 +97,49 @@ export class OAuthService {
     return url.toString();
   }
 
-  private async createPendingOAuthRequest(data: AuthorizeParamsDto) {
-    // save all query params for login redirect
-    const oAuthRequestId = crypto.randomUUID();
-    const key = `pending_oauth:${oAuthRequestId}`;
-    await this.redis.set(key, JSON.stringify(data), 'EX', 5 * 60 * 1000);
-    return oAuthRequestId;
-  }
+  private async handleAuthorizationCodeGrant(dto: TokenRequestDto, app: Application) {
+    const key = `auth_code:${dto.code}`;
+    const raw = await this.redis.get(key);
 
-  private async consumePendingOAuthRequest(oAuthRequestId: string) {
-    const key = `pending_oauth:${oAuthRequestId}`;
-    const data = await this.redis.get(key);
-    if (!data) return null;
-    await this.redis.del(key);
-    return JSON.parse(data) as AuthorizeParamsDto;
-  }
+    if (!raw) throw new UnauthorizedException('Invalid or expired code.');
 
-  private async validateApplication(clientId: string, redirectUri: string) {
-    const application = await this.appRepository.findOne({
-      where: { clientId, isActive: true },
-    });
+    const context = JSON.parse(raw) as AuthorizationCodePayload;
 
-    if (!application) {
+    if (context.clientId !== dto.clientId || context.redirectUri !== dto.redirectUri) {
       throw new UnauthorizedException('Invalid client.');
     }
 
-    if (!application.redirectUris.includes(redirectUri)) {
-      throw new UnauthorizedException('Invalid redirect uri.');
-    }
+    await this.redis.del(key);
 
-    return application;
+    const user = await this.checkValidUser(context.userId);
+
+    return await this.tokenService.generateTokenPair({
+      sub: user.id,
+      externalKey: user.externalKey,
+      name: user.fullName,
+      userType: app.clientProfile,
+      clientId: context.clientId,
+      scope: context.scope,
+    });
   }
 
-  private async redirectToLoginWithPendingRequest(params: AuthorizeParamsDto) {
-    const oAuthRequestId = await this.createPendingOAuthRequest(params);
-    const loginUrl = new URL(this.configService.getOrThrow('IDENTITY_HUB_LOGIN_PATH'));
-    loginUrl.searchParams.set('auth_request_id', oAuthRequestId);
-    return loginUrl.toString();
+  private async handleRefreshTokenGrant(dto: TokenRequestDto, app: Application) {
+    const data = await this.tokenService.consumeRefreshToken(dto.refreshToken);
+
+    if (data.clientId !== app.clientId) {
+      throw new UnauthorizedException('invalid_client');
+    }
+
+    const user = await this.checkValidUser(data.userId);
+
+    return await this.tokenService.generateTokenPair({
+      sub: user.id,
+      name: user.fullName,
+      userType: app.clientProfile,
+      externalKey: user.externalKey,
+      clientId: data.clientId,
+      scope: data.scope,
+    });
   }
 
   private async createAuthCode(userId: string, { clientId, redirectUri, scope }: AuthorizeParamsDto) {
@@ -166,18 +155,41 @@ export class OAuthService {
     return code;
   }
 
-  private async createSession(user: User): Promise<string> {
-    const sessionId = crypto.randomUUID();
-    const key = `session:${sessionId}`;
-    const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
-    const payload: AuthSessionPayload = { userId: user.id, fullName: user.fullName };
-    await this.redis.set(key, JSON.stringify(payload), 'EX', LABORAL_HOURS_MS);
-    return sessionId;
+  private async checkValidUser(id: string) {
+    const user = await this.userRepository.findOne({ where: { id, isActive: true } });
+    if (!user) {
+      await this.tokenService.revokeAllForUser(id);
+      throw new UnauthorizedException('User not authorized.');
+    }
+    return user;
   }
 
-  private async getSession(sessionId: string) {
-    const key = `session:${sessionId}`;
-    const session = await this.redis.get(key);
-    return session ? (JSON.parse(session) as AuthSessionPayload) : null;
+  private async loadValidApplication(clientId: string, clientSecret?: string) {
+    const app = await this.appRepository.findOne({ where: { clientId, isActive: true } });
+    if (!app) throw new UnauthorizedException('Invalid client id.');
+
+    if (app.isConfidential) {
+      if (!clientSecret) throw new UnauthorizedException('Client secret is required.');
+      const isSecretValid = await bcrypt.compare(clientSecret, app.clientSecret);
+      if (!isSecretValid) {
+        throw new UnauthorizedException('Invalid client secret.');
+      }
+    }
+    return app;
+  }
+
+  private async createPendingOAuthRequest(params: AuthorizeParamsDto) {
+    const oAuthRequestId = crypto.randomUUID();
+    const key = `pending_oauth:${oAuthRequestId}`;
+    await this.redis.set(key, JSON.stringify(params), 'EX', 5 * 60 * 1000);
+    return oAuthRequestId;
+  }
+
+  private async consumePendingOAuthRequest(oAuthRequestId: string) {
+    const key = `pending_oauth:${oAuthRequestId}`;
+    const data = await this.redis.get(key);
+    if (!data) return null;
+    await this.redis.del(key);
+    return JSON.parse(data) as AuthorizeParamsDto;
   }
 }

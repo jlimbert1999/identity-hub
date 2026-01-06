@@ -4,85 +4,52 @@ import { JwtService } from '@nestjs/jwt';
 
 import Redis from 'ioredis';
 
-import { AccessTokenPayload } from '../interfaces';
-import { InjectRepository } from '@nestjs/typeorm';
-import { User } from 'src/modules/users/entities';
-import { Repository } from 'typeorm';
+import { AccessTokenPayload, RefreshTokenPayload } from '../interfaces';
 
 @Injectable()
 export class TokenService {
-  private readonly ACCESS_TTL = 60 * 15; // 15 minutos
   private readonly REFRESH_TTL = 60 * 60 * 24 * 7; // 7 días
 
   constructor(
-    @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRedis() private readonly redis: Redis,
     private jwtService: JwtService,
   ) {}
 
-  async generateTokenPair(accessPayload: AccessTokenPayload) {
-    const refreshToken = `rt_${crypto.randomUUID()}`;
+  async generateTokenPair(payload: AccessTokenPayload) {
+    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: '15min' });
+    const refreshToken = crypto.randomUUID();
 
-    const accessToken = await this.jwtService.signAsync(accessPayload, {
-      expiresIn: this.ACCESS_TTL,
-    });
+    const data: RefreshTokenPayload = {
+      userId: payload.sub,
+      clientId: payload.clientId,
+      scope: payload.scope,
+    };
 
-    await this.redis.set(
-      `refresh:${refreshToken}`,
-      JSON.stringify({
-        userId: accessPayload.sub,
-        clientId: accessPayload.clientId,
-        scope: accessPayload.scope,
-      }),
-      'EX',
-      this.REFRESH_TTL,
-    );
-
-    await this.redis.sadd(`user_refresh_tokens:${accessPayload.sub}`, refreshToken);
+    await this.redis.set(`refresh:${refreshToken}`, JSON.stringify(data), 'EX', this.REFRESH_TTL);
+    await this.redis.sadd(`user_refresh_tokens:${payload.sub}`, refreshToken);
 
     return {
       accessToken,
       refreshToken,
-      token_type: 'Bearer',
-      expires_in: this.ACCESS_TTL,
+      tokenType: 'Bearer',
+      expiresIn: 900,
     };
   }
 
-  async rotateRefreshToken(refreshToken: string, clientId: string) {
+  async consumeRefreshToken(refreshToken: string) {
     const key = `refresh:${refreshToken}`;
-    const stored = await this.redis.get(key);
+    const raw = await this.redis.get(key);
 
-    if (!stored) {
-      throw new UnauthorizedException('invalid_refresh_token');
+    if (!raw) {
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const parsed = JSON.parse(stored) as { userId: string; clientId: string; scope: string };
-
-    if (parsed.clientId !== clientId) {
-      throw new UnauthorizedException('invalid client');
-    }
-
-    // TODO ver si es necesario
-    const user = await this.userRepository.findOne({
-      where: { id: parsed.userId, isActive: true },
-      select: ['id'], // Solo pedimos el ID para que la consulta sea ultra rápida
-    });
-    if (!user) {
-      // 3. Si el usuario no existe o está inactivo, limpiamos TODO en Redis
-      await this.revokeAllForUser(parsed.userId);
-      throw new UnauthorizedException('User not authorized.');
-    }
+    const data = JSON.parse(raw) as RefreshTokenPayload;
 
     await this.redis.del(key);
-    await this.redis.srem(`user_refresh_tokens:${parsed.userId}`, refreshToken);
+    await this.redis.srem(`user_refresh_tokens:${data.userId}`, refreshToken);
 
-    return this.generateTokenPair({
-      sub: parsed.userId,
-      clientId: parsed.clientId,
-      scope: parsed.scope,
-      externalKey: user.externalKey,
-      name: user.fullName,
-    });
+    return data;
   }
 
   async revokeAllForUser(userId: string) {
