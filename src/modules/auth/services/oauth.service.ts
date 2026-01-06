@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 import Redis from 'ioredis';
 
 import { LoginParamsDto, TokenRequestDto, AuthorizeParamsDto, LoginDto, GrantType } from '../dtos';
-import { SessionPayload, AuthorizationCodePayload } from '../interfaces';
+import { AuthSessionPayload, AuthorizationCodePayload } from '../interfaces';
 import { AuthException } from '../exceptions/auth.exception';
 import { User } from 'src/modules/users/entities';
 
@@ -34,17 +34,10 @@ export class OAuthService {
       return await this.redirectToLoginWithPendingRequest(params);
     }
     await this.authService.checkUserAppAccess(session.userId, application.id);
-    return this.redirectWithAuthorizationCode(
-      {
-        userId: session.userId,
-        fullName: session.fullName,
-        clientId: params.clientId,
-        redirectUri: params.redirectUri,
-        scope: params.scope,
-        externalKey: session.externalKey,
-      },
-      params,
-    );
+    const code = await this.createAuthCode(session.userId, params);
+    const resultUrl = new URL(params.redirectUri);
+    resultUrl.searchParams.set('code', code);
+    return resultUrl.toString();
   }
 
   async login(dto: LoginDto) {
@@ -87,34 +80,28 @@ export class OAuthService {
       sub: context.userId,
       clientId: context.clientId,
       scope: context.scope,
-      externalKey: context.externalKey,
-      name: context.fullName,
     });
   }
 
-  async resumeAuthorizeFlow(params: LoginParamsDto) {
-    const { authRequestId } = params;
+  async resumeAuthorizeFlow({ authRequestId }: LoginParamsDto) {
     const loginUrl = this.configService.getOrThrow<string>('IDENTITY_HUB_APPS_PATH');
-    if (authRequestId) {
-      const pendingReq = await this.consumePendingOAuthRequest(authRequestId);
+    if (!authRequestId) return loginUrl;
 
-      if (!pendingReq) return loginUrl;
+    const pendingReq = await this.consumePendingOAuthRequest(authRequestId);
+    if (!pendingReq) return loginUrl;
 
-      const authorizeUrl = new URL('/oauth/authorize');
-      authorizeUrl.searchParams.set('client_id', pendingReq.clientId);
-      authorizeUrl.searchParams.set('redirect_uri', pendingReq.redirectUri);
-      authorizeUrl.searchParams.set('response_type', 'code');
-      if (pendingReq.scope) {
-        authorizeUrl.searchParams.set('scope', pendingReq.scope);
-      }
-
-      if (pendingReq.state) {
-        authorizeUrl.searchParams.set('state', pendingReq.state);
-      }
-      return authorizeUrl.toString();
+    const authorizeUrl = new URL('/oauth/authorize');
+    authorizeUrl.searchParams.set('client_id', pendingReq.clientId);
+    authorizeUrl.searchParams.set('redirect_uri', pendingReq.redirectUri);
+    authorizeUrl.searchParams.set('response_type', 'code');
+    if (pendingReq.scope) {
+      authorizeUrl.searchParams.set('scope', pendingReq.scope);
     }
 
-    return loginUrl;
+    if (pendingReq.state) {
+      authorizeUrl.searchParams.set('state', pendingReq.state);
+    }
+    return authorizeUrl.toString();
   }
 
   resolveLoginErrorRedirect(error: AuthException, params: LoginParamsDto) {
@@ -166,24 +153,24 @@ export class OAuthService {
     return loginUrl.toString();
   }
 
-  private async redirectWithAuthorizationCode(session: AuthorizationCodePayload, params: AuthorizeParamsDto) {
+  private async createAuthCode(userId: string, { clientId, redirectUri, scope }: AuthorizeParamsDto) {
     const code = crypto.randomUUID();
     const key = `auth_code:${code}`;
-    await this.redis.set(key, JSON.stringify(session), 'EX', 5 * 60 * 1000);
-    const redirectUri = new URL(params.redirectUri);
-    redirectUri.searchParams.set('code', code);
-    return redirectUri.toString();
+    const payload: AuthorizationCodePayload = {
+      userId,
+      clientId,
+      redirectUri,
+      scope,
+    };
+    await this.redis.set(key, JSON.stringify(payload), 'EX', 5 * 60 * 1000);
+    return code;
   }
 
   private async createSession(user: User): Promise<string> {
     const sessionId = crypto.randomUUID();
     const key = `session:${sessionId}`;
     const LABORAL_HOURS_MS = 10 * 60 * 60 * 1000;
-    const payload: SessionPayload = {
-      userId: user.id,
-      fullName: user.fullName,
-      externalKey: user.externalKey,
-    };
+    const payload: AuthSessionPayload = { userId: user.id, fullName: user.fullName };
     await this.redis.set(key, JSON.stringify(payload), 'EX', LABORAL_HOURS_MS);
     return sessionId;
   }
@@ -191,6 +178,6 @@ export class OAuthService {
   private async getSession(sessionId: string) {
     const key = `session:${sessionId}`;
     const session = await this.redis.get(key);
-    return session ? (JSON.parse(session) as SessionPayload) : null;
+    return session ? (JSON.parse(session) as AuthSessionPayload) : null;
   }
 }

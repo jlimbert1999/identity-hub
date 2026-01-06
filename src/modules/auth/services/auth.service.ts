@@ -9,7 +9,7 @@ import Redis from 'ioredis';
 import { AuthException, AuthErrorCode } from '../exceptions/auth.exception';
 import { UserApplication } from 'src/modules/access/entities';
 import { User } from 'src/modules/users/entities';
-import { SessionPayload } from '../interfaces';
+import { AuthSessionPayload } from '../interfaces';
 import { LoginDto } from '../dtos';
 @Injectable()
 export class AuthService {
@@ -47,7 +47,7 @@ export class AuthService {
     if (!payload) {
       throw new UnauthorizedException('Session not found');
     }
-    const session = JSON.parse(payload) as SessionPayload;
+    const session = JSON.parse(payload) as AuthSessionPayload;
 
     const user = await this.userRepository.findOneBy({ id: session.userId });
 

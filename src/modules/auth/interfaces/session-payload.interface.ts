@@ -1,5 +1,4 @@
-export interface SessionPayload {
+export interface AuthSessionPayload {
   userId: string;
   fullName: string;
-  externalKey: string;
 }
