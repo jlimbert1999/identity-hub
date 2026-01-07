@@ -112,7 +112,7 @@ export class OAuthService {
     await this.redis.del(key);
 
     const user = await this.checkValidUser(context.userId);
-
+    console.log("CALL - exchange code");
     return await this.tokenService.generateTokenPair({
       sub: user.id,
       externalKey: user.externalKey,
@@ -131,7 +131,7 @@ export class OAuthService {
     }
 
     const user = await this.checkValidUser(data.userId);
-
+    console.log("CALL - refresh token");
     return await this.tokenService.generateTokenPair({
       sub: user.id,
       name: user.fullName,

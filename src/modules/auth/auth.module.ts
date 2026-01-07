@@ -27,6 +27,11 @@ import { SessionGuard } from './guards/session.guard';
       useFactory: (configService: ConfigService<EnvironmentVariables>) => ({
         privateKey: configService.get('JWT_PRIVATE_KEY'),
         publicKey: configService.get('JWT_PUBLIC_KEY'), // Ú
+        signOptions: {
+          algorithm: 'RS256',
+          issuer: 'identity-hub',
+          audience: 'sso-clients',
+        },
       }),
       inject: [ConfigService],
     }),
