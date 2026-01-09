@@ -46,6 +46,6 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => UserApplication, (UserApplications) => UserApplications.user)
-  accesses: UserApplication[];
+  @OneToMany(() => UserApplication, (userApplication) => userApplication.user)
+  userApplications: UserApplication[];
 }

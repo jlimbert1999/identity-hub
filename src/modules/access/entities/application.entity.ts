@@ -18,8 +18,11 @@ export class Application {
   @Column()
   launchUrl: string;
 
+  @Column({ length: 9, nullable: true })
+  color: string;
+
   @Column()
-  clientSecret: string; // bcrypt hash
+  clientSecret: string;
 
   @Column({ default: true })
   isConfidential: boolean;
@@ -33,8 +36,8 @@ export class Application {
   @Column({ default: true })
   isActive: boolean;
 
-  @OneToMany(() => UserApplication, (assignment) => assignment.application)
-  userAccesses: UserApplication[];
+  @OneToMany(() => UserApplication, (userApplication) => userApplication.application)
+  userApplications: UserApplication[];
 
   @CreateDateColumn()
   createdAt: Date;

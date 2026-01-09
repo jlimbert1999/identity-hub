@@ -1,15 +1,15 @@
-import { Body, Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { SessionGuard } from '../../auth/guards/session.guard';
-import { HubService } from '../services';
-import { GetUserRequest } from 'src/modules/auth/decorators/get-user-request.decorator';
-import { User } from 'src/modules/users/entities';
+import { Body, Controller, Get } from '@nestjs/common';
 
-@Controller('hubs')
+import { GetAuthUser } from 'src/modules/auth/decorators/get-user-request.decorator';
+import { User } from 'src/modules/users/entities';
+import { HubService } from '../services';
+
+@Controller('hub')
 export class HubController {
   constructor(private hubService: HubService) {}
 
   @Get('access')
-  getMyAcccess(@GetUserRequest() user: User) {
+  getMyAcccess(@GetAuthUser() user: User) {
     return this.hubService.getUserApplications(user.id);
   }
 

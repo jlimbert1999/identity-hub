@@ -2,7 +2,7 @@ import { ExecutionContext, createParamDecorator, InternalServerErrorException } 
 import type { Request } from 'express';
 import { User } from 'src/modules/users/entities';
 
-export const GetUserRequest = createParamDecorator((propertiePath: keyof User, ctx: ExecutionContext) => {
+export const GetAuthUser = createParamDecorator((propertiePath: keyof User, ctx: ExecutionContext) => {
   const req: Request = ctx.switchToHttp().getRequest();
   const user = req['user'] as User | undefined;
   if (!user) {

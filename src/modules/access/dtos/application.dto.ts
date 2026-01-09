@@ -19,8 +19,12 @@ export class CreateApplicationDto {
   launchUrl: string;
 
   @IsString()
+  @IsOptional()
+  color?: string;
+
+  @IsString()
   @IsNotEmpty()
-  defaultRole: string;
+  clientProfile: string;
 
   @IsBoolean()
   isConfidential: boolean;

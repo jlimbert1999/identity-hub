@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { SessionGuard } from 'src/modules/auth/guards/session.guard';
 import { User } from 'src/modules/users/entities';
 
-import { Cookies, GetUserRequest } from '../decorators';
+import { Cookies, GetAuthUser } from '../decorators';
 import { AuthService } from '../services';
 
 @Controller('auth')
@@ -14,7 +14,7 @@ export class AuthController {
 
   @Get('status')
   @UseGuards(SessionGuard)
-  checkAuthStatus(@GetUserRequest() user: User) {
+  checkAuthStatus(@GetAuthUser() user: User) {
     return { user: user };
   }
 

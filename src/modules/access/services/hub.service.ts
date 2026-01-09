@@ -1,21 +1,17 @@
-import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 
-import { UserApplication } from '../entities';
+import { Application } from '../entities';
 
 @Injectable()
 export class HubService {
-  constructor(
-    @InjectRepository(UserApplication)
-    private userAppRepository: Repository<UserApplication>,
-  ) {}
+  constructor(@InjectRepository(Application) private appResository: Repository<Application>) {}
 
   async getUserApplications(userId: string) {
-    const result = await this.userAppRepository.find({
-      where: { user: { id: userId } },
-      relations: { application: true },
+    return await this.appResository.find({
+      where: { userApplications: { user: { id: userId } } },
+      select: ['name', 'description', 'launchUrl', 'color'],
     });
-    return result;
   }
 }

@@ -9,10 +9,10 @@ export class UserApplication {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, (user) => user.accesses, { onDelete: 'CASCADE' })
-  user: User;
+  @ManyToOne(() => User, (user) => user.userApplications, { onDelete: 'CASCADE' })
+  public user: User;
 
-  @ManyToOne(() => Application, (system) => system.userAccesses, {
+  @ManyToOne(() => Application, (system) => system.userApplications, {
     onDelete: 'CASCADE',
   })
   application: Application;

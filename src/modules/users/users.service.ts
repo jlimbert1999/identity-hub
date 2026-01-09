@@ -22,7 +22,7 @@ export class UsersService {
       ...(term && {
         where: { fullName: ILike(`%${term}%`) },
       }),
-      relations: { accesses: true },
+      relations: { userApplications: true },
       order: {
         createdAt: 'DESC',
       },

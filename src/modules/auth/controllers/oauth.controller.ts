@@ -35,6 +35,7 @@ export class OAuthController {
       });
 
       const redirectUrl = await this.oAuthService.resumeAuthorizeFlow(queryParams);
+      console.log(redirectUrl);
       return res.redirect(redirectUrl);
     } catch (error: unknown) {
       if (error instanceof AuthException) {

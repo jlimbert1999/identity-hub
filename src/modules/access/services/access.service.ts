@@ -36,7 +36,7 @@ export class AccessService {
       );
       const createdUser = queryRunner.manager.getRepository(User).findOne({
         where: { id: user.id },
-        relations: { accesses: { application: true } },
+        relations: { userApplications: { application: true } },
       });
       await queryRunner.commitTransaction();
 
@@ -71,7 +71,7 @@ export class AccessService {
 
       const updatedUser = await queryRunner.manager.getRepository(User).findOne({
         where: { id: user.id },
-        relations: { accesses: { application: true } },
+        relations: { userApplications: { application: true } },
       });
 
       await queryRunner.commitTransaction();
